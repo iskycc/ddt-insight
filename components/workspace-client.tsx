@@ -23,6 +23,10 @@ import {
   ListFilter,
   LogOut,
   Menu,
+  MoveHorizontal,
+  PanelLeftClose,
+  PanelLeftOpen,
+  Network,
   Pencil,
   Plus,
   RefreshCw,
@@ -30,14 +34,18 @@ import {
   Search,
   Server,
   ShieldCheck,
+  ScrollText,
+  ScanLine,
   Sparkles,
   UploadCloud,
+  Users,
   X,
   Zap,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import {
   ChangeEvent,
+  CSSProperties,
   DragEvent,
   KeyboardEvent,
   useCallback,
@@ -47,17 +55,32 @@ import {
   useState,
 } from "react";
 import { Logo } from "@/components/logo";
+import {
+  AuditLogView,
+  LdapSettings,
+  UserManagement,
+} from "@/components/admin-console";
 import type {
   CaseData,
   CaseListItem,
   DashboardStats,
   ImportResult,
+  UserProvider,
+  UserRole,
 } from "@/lib/types";
 
-type WorkspaceView = "cases" | "overview" | "api";
+type WorkspaceView =
+  | "cases"
+  | "overview"
+  | "api"
+  | "users"
+  | "ldap"
+  | "audit";
 type GroupItem = { srNum: string; count: number };
 
 const countFormatter = new Intl.NumberFormat("zh-CN");
+const SIDEBAR_HIDDEN_STORAGE_KEY = "ddt-insight:sidebar-hidden";
+const CASE_LIST_WIDTH_STORAGE_KEY = "ddt-insight:case-list-width";
 
 function classNames(...names: Array<string | false | null | undefined>) {
   return names.filter(Boolean).join(" ");
@@ -81,10 +104,32 @@ function timeAgo(value: string) {
   }).format(new Date(value));
 }
 
-export function WorkspaceClient({ username }: { username: string }) {
+const viewLabels: Record<WorkspaceView, string> = {
+  cases: "用例管理",
+  overview: "数据概览",
+  api: "开放 API",
+  users: "用户管理",
+  ldap: "LDAP",
+  audit: "审计日志",
+};
+
+export function WorkspaceClient({
+  userId,
+  username,
+  displayName,
+  role,
+  provider,
+}: {
+  userId: string;
+  username: string;
+  displayName: string;
+  role: UserRole;
+  provider: UserProvider;
+}) {
   const router = useRouter();
   const [view, setView] = useState<WorkspaceView>("cases");
   const [mobileNavigationOpen, setMobileNavigationOpen] = useState(false);
+  const [sidebarHidden, setSidebarHidden] = useState(false);
   const [cases, setCases] = useState<CaseListItem[]>([]);
   const [groups, setGroups] = useState<GroupItem[]>([]);
   const [query, setQuery] = useState("");
@@ -98,6 +143,12 @@ export function WorkspaceClient({ username }: { username: string }) {
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [toast, setToast] = useState("");
   const requestSequence = useRef(0);
+
+  useEffect(() => {
+    setSidebarHidden(
+      window.localStorage.getItem(SIDEBAR_HIDDEN_STORAGE_KEY) === "true",
+    );
+  }, []);
 
   const handleUnauthorized = useCallback(
     (response: Response) => {
@@ -243,8 +294,18 @@ export function WorkspaceClient({ username }: { username: string }) {
     setMobileNavigationOpen(false);
   }
 
+  function setDesktopSidebarHidden(hidden: boolean) {
+    setSidebarHidden(hidden);
+    window.localStorage.setItem(SIDEBAR_HIDDEN_STORAGE_KEY, String(hidden));
+  }
+
   return (
-    <div className="workspace-shell">
+    <div
+      className={classNames(
+        "workspace-shell",
+        sidebarHidden && "workspace-sidebar-hidden",
+      )}
+    >
       <aside
         className={classNames(
           "workspace-sidebar",
@@ -253,6 +314,15 @@ export function WorkspaceClient({ username }: { username: string }) {
       >
         <div className="sidebar-head">
           <Logo />
+          <button
+            className="icon-button sidebar-collapse-button"
+            type="button"
+            aria-label="隐藏主导航"
+            title="隐藏主导航"
+            onClick={() => setDesktopSidebarHidden(true)}
+          >
+            <PanelLeftClose size={18} />
+          </button>
           <button
             className="icon-button mobile-nav-close"
             type="button"
@@ -292,6 +362,35 @@ export function WorkspaceClient({ username }: { username: string }) {
             开放 API
             <span className="nav-open-pill">OPEN</span>
           </button>
+          {role === "admin" && (
+            <>
+              <small>系统管理</small>
+              <button
+                className={classNames(view === "users" && "active")}
+                type="button"
+                onClick={() => selectView("users")}
+              >
+                <Users size={18} />
+                用户管理
+              </button>
+              <button
+                className={classNames(view === "ldap" && "active")}
+                type="button"
+                onClick={() => selectView("ldap")}
+              >
+                <Network size={18} />
+                LDAP
+              </button>
+              <button
+                className={classNames(view === "audit" && "active")}
+                type="button"
+                onClick={() => selectView("audit")}
+              >
+                <ScrollText size={18} />
+                审计日志
+              </button>
+            </>
+          )}
         </nav>
 
         <div className="sidebar-offline-card">
@@ -306,10 +405,13 @@ export function WorkspaceClient({ username }: { username: string }) {
         </div>
 
         <div className="sidebar-user">
-          <span>{username.slice(0, 1).toUpperCase()}</span>
+          <span>{displayName.slice(0, 1).toUpperCase()}</span>
           <p>
-            <strong>{username}</strong>
-            <small>系统管理员</small>
+            <strong>{displayName}</strong>
+            <small>
+              {role === "admin" ? "系统管理员" : "用例编辑员"} ·{" "}
+              {provider === "ldap" ? "LDAP" : username}
+            </small>
           </p>
           <button
             className="icon-button"
@@ -332,6 +434,15 @@ export function WorkspaceClient({ username }: { username: string }) {
       <div className="workspace-main">
         <header className="workspace-topbar">
           <button
+            className="icon-button sidebar-restore-button"
+            type="button"
+            aria-label="显示主导航"
+            title="显示主导航"
+            onClick={() => setDesktopSidebarHidden(false)}
+          >
+            <PanelLeftOpen size={18} />
+          </button>
+          <button
             className="icon-button mobile-menu"
             type="button"
             aria-label="打开导航"
@@ -343,11 +454,7 @@ export function WorkspaceClient({ username }: { username: string }) {
             <span>DDT Insight</span>
             <ChevronRight size={13} />
             <strong>
-              {view === "cases"
-                ? "用例管理"
-                : view === "overview"
-                  ? "数据概览"
-                  : "开放 API"}
+              {viewLabels[view]}
             </strong>
           </div>
           <button
@@ -371,6 +478,7 @@ export function WorkspaceClient({ username }: { username: string }) {
             casesLoading={casesLoading}
             caseLoading={caseLoading}
             hasMore={hasMore}
+            sidebarHidden={sidebarHidden}
             onQueryChange={setQuery}
             onGroupChange={setSelectedGroup}
             onCaseSelect={setSelectedCaseId}
@@ -406,6 +514,16 @@ export function WorkspaceClient({ username }: { username: string }) {
         )}
 
         {view === "api" && <ApiGuide />}
+
+        {view === "users" && role === "admin" && (
+          <UserManagement currentUserId={userId} onToast={setToast} />
+        )}
+
+        {view === "ldap" && role === "admin" && (
+          <LdapSettings onToast={setToast} />
+        )}
+
+        {view === "audit" && role === "admin" && <AuditLogView />}
       </div>
 
       {importOpen && (
@@ -436,6 +554,7 @@ function CaseManager({
   casesLoading,
   caseLoading,
   hasMore,
+  sidebarHidden,
   onQueryChange,
   onGroupChange,
   onCaseSelect,
@@ -453,6 +572,7 @@ function CaseManager({
   casesLoading: boolean;
   caseLoading: boolean;
   hasMore: boolean;
+  sidebarHidden: boolean;
   onQueryChange: (value: string) => void;
   onGroupChange: (value: string) => void;
   onCaseSelect: (value: string) => void;
@@ -463,6 +583,134 @@ function CaseManager({
 }) {
   const currentIndex = cases.findIndex((item) => item.caseId === selectedCaseId);
   const currentItem = cases[currentIndex];
+  const caseListPanelRef = useRef<HTMLElement>(null);
+  const resizeStart = useRef({ pointerX: 0, width: 0 });
+  const widthRef = useRef(0);
+  const [caseListWidth, setCaseListWidth] = useState<number | null>(null);
+  const [resizing, setResizing] = useState(false);
+
+  const defaultCaseListWidth = useCallback(() => {
+    const value = Number.parseFloat(
+      getComputedStyle(document.documentElement).getPropertyValue(
+        "--case-list-width",
+      ),
+    );
+    return Number.isFinite(value) ? value : 287;
+  }, []);
+
+  const widthBounds = useCallback(() => {
+    const rootSize =
+      Number.parseFloat(getComputedStyle(document.documentElement).fontSize) ||
+      16;
+    const availableWidth =
+      caseListPanelRef.current?.parentElement?.getBoundingClientRect().width ??
+      window.innerWidth;
+    const minimum = Math.max(210, rootSize * 11.5);
+    const maximum = Math.max(
+      minimum,
+      Math.min(920, availableWidth - Math.max(460, rootSize * 27)),
+    );
+    return { minimum, maximum };
+  }, []);
+
+  const clampCaseListWidth = useCallback(
+    (value: number) => {
+      const { minimum, maximum } = widthBounds();
+      return Math.round(Math.min(Math.max(value, minimum), maximum));
+    },
+    [widthBounds],
+  );
+
+  const commitCaseListWidth = useCallback(
+    (value: number) => {
+      const next = clampCaseListWidth(value);
+      widthRef.current = next;
+      setCaseListWidth(next);
+      window.localStorage.setItem(CASE_LIST_WIDTH_STORAGE_KEY, String(next));
+    },
+    [clampCaseListWidth],
+  );
+
+  const fitCaseIds = useCallback(() => {
+    const defaultWidth = defaultCaseListWidth();
+    const sample = caseListPanelRef.current?.querySelector(
+      ".case-list-item strong",
+    );
+    const context = document.createElement("canvas").getContext("2d");
+    if (context && sample) context.font = getComputedStyle(sample).font;
+    const longestCaseIdWidth = cases.reduce(
+      (longest, item) =>
+        Math.max(
+          longest,
+          context?.measureText(item.caseId).width ?? item.caseId.length * 8,
+        ),
+      0,
+    );
+    commitCaseListWidth(
+      Math.max(defaultWidth * 1.45, longestCaseIdWidth + 116),
+    );
+  }, [cases, commitCaseListWidth, defaultCaseListWidth]);
+
+  useEffect(() => {
+    const savedWidth = Number(
+      window.localStorage.getItem(CASE_LIST_WIDTH_STORAGE_KEY),
+    );
+    commitCaseListWidth(
+      Number.isFinite(savedWidth) && savedWidth > 0
+        ? savedWidth
+        : defaultCaseListWidth(),
+    );
+  }, [commitCaseListWidth, defaultCaseListWidth]);
+
+  useEffect(() => {
+    const handleWindowResize = () => {
+      setCaseListWidth((current) => {
+        if (current === null) return current;
+        const next = clampCaseListWidth(current);
+        widthRef.current = next;
+        return next;
+      });
+    };
+    window.addEventListener("resize", handleWindowResize);
+    handleWindowResize();
+    const sidebarTransitionTimer = window.setTimeout(handleWindowResize, 220);
+    return () => {
+      window.clearTimeout(sidebarTransitionTimer);
+      window.removeEventListener("resize", handleWindowResize);
+    };
+  }, [clampCaseListWidth, sidebarHidden]);
+
+  useEffect(() => {
+    if (!resizing) return;
+
+    const handlePointerMove = (event: PointerEvent) => {
+      const next = clampCaseListWidth(
+        resizeStart.current.width +
+          event.clientX -
+          resizeStart.current.pointerX,
+      );
+      widthRef.current = next;
+      setCaseListWidth(next);
+    };
+    const finishResize = () => {
+      setResizing(false);
+      window.localStorage.setItem(
+        CASE_LIST_WIDTH_STORAGE_KEY,
+        String(widthRef.current),
+      );
+    };
+
+    document.body.classList.add("case-list-resizing");
+    window.addEventListener("pointermove", handlePointerMove);
+    window.addEventListener("pointerup", finishResize, { once: true });
+    window.addEventListener("pointercancel", finishResize, { once: true });
+    return () => {
+      document.body.classList.remove("case-list-resizing");
+      window.removeEventListener("pointermove", handlePointerMove);
+      window.removeEventListener("pointerup", finishResize);
+      window.removeEventListener("pointercancel", finishResize);
+    };
+  }, [clampCaseListWidth, resizing]);
 
   function move(direction: -1 | 1) {
     const next = cases[currentIndex + direction];
@@ -470,8 +718,17 @@ function CaseManager({
   }
 
   return (
-    <div className="case-workspace">
-      <section className="case-list-panel">
+    <div
+      className="case-workspace"
+      style={
+        caseListWidth === null
+          ? undefined
+          : ({
+              "--case-list-current-width": `${caseListWidth}px`,
+            } as CSSProperties)
+      }
+    >
+      <section className="case-list-panel" ref={caseListPanelRef}>
         <div className="case-list-heading">
           <div>
             <h1>用例库</h1>
@@ -485,6 +742,40 @@ function CaseManager({
           >
             <Plus size={19} />
           </button>
+        </div>
+
+        <div className="case-list-width-toolbar">
+          <span>
+            <MoveHorizontal size={13} />
+            列表宽度
+            {caseListWidth !== null && <em>{caseListWidth}px</em>}
+          </span>
+          <div>
+            <button
+              type="button"
+              title="紧凑宽度"
+              aria-label="使用紧凑的 CaseID 列表宽度"
+              onClick={() => commitCaseListWidth(defaultCaseListWidth() * 0.76)}
+            >
+              <PanelLeftClose size={14} />
+            </button>
+            <button
+              type="button"
+              title="恢复默认宽度"
+              aria-label="恢复默认的 CaseID 列表宽度"
+              onClick={() => commitCaseListWidth(defaultCaseListWidth())}
+            >
+              <PanelLeftOpen size={14} />
+            </button>
+            <button
+              type="button"
+              title="适应最长 CaseID"
+              aria-label="自动扩展以预览最长 CaseID"
+              onClick={fitCaseIds}
+            >
+              <ScanLine size={14} />
+            </button>
+          </div>
         </div>
 
         <label className="search-box">
@@ -546,7 +837,7 @@ function CaseManager({
                     <File size={16} />
                   </span>
                   <p>
-                    <strong>{item.caseId}</strong>
+                    <strong title={item.caseId}>{item.caseId}</strong>
                     <small>
                       {item.srNum}
                       <i>·</i>
@@ -580,6 +871,48 @@ function CaseManager({
               </p>
             </div>
           )}
+        </div>
+        <div
+          className={classNames(
+            "case-list-resizer",
+            resizing && "active",
+          )}
+          role="separator"
+          aria-label="调整 CaseID 列表宽度"
+          aria-orientation="vertical"
+          aria-valuenow={caseListWidth ?? undefined}
+          tabIndex={0}
+          title="拖动调整列表宽度，双击适应最长 CaseID"
+          onDoubleClick={fitCaseIds}
+          onPointerDown={(event) => {
+            resizeStart.current = {
+              pointerX: event.clientX,
+              width:
+                caseListWidth ??
+                caseListPanelRef.current?.getBoundingClientRect().width ??
+                defaultCaseListWidth(),
+            };
+            widthRef.current = resizeStart.current.width;
+            setResizing(true);
+            event.preventDefault();
+          }}
+          onKeyDown={(event) => {
+            if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
+              event.preventDefault();
+              commitCaseListWidth(
+                (caseListWidth ?? defaultCaseListWidth()) +
+                  (event.key === "ArrowLeft" ? -24 : 24),
+              );
+            } else if (event.key === "Home") {
+              event.preventDefault();
+              commitCaseListWidth(defaultCaseListWidth() * 0.76);
+            } else if (event.key === "End") {
+              event.preventDefault();
+              fitCaseIds();
+            }
+          }}
+        >
+          <i />
         </div>
       </section>
 

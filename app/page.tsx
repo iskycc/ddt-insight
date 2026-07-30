@@ -61,9 +61,8 @@ export default async function HomePage() {
               完全离线 · 数据不出本机
             </div>
             <h1>
-              让每一个用例，
-              <br />
-              <span>清晰可见。</span>
+              <span className="hero-title-line">让每一个用例，</span>
+              <span className="hero-title-accent">清晰可见。</span>
             </h1>
             <p>
               从分散表格到统一数据中枢。极速导入、精准检索、轻松维护，

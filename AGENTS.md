@@ -10,6 +10,7 @@ DDT Insight 是完全离线运行的 Next.js 全栈用例数据管理平台：
 - SQLite 是唯一持久化数据库，默认位于 `data/ddt-insight.sqlite`。
 - 表格中的 `CaseID` 是全局唯一索引，`srNum` 是用例分组字段。
 - 不同表格可以拥有完全不同的动态列。
+- 本地用户、LDAP 配置和审计日志与用例数据共用 SQLite 持久化。
 
 ## 不可破坏的产品约束
 
@@ -24,6 +25,10 @@ DDT Insight 是完全离线运行的 Next.js 全栈用例数据管理平台：
 9. `docker-compose.yml` 必须保持 Compose V1 可解析；不要加入只在新版 Compose Spec 中存在的字段。
 10. Release 工作流只允许构建、导出镜像并上传 GitHub Release；不得添加镜像仓库登录或 `docker push`。
 11. Release 工作流必须同时保留 `linux/amd64` 和 `linux/arm64` 两种离线 Docker 镜像产物。
+12. 本地管理员必须始终可用于 LDAP 故障恢复；不得在 API、日志或 UI 中返回 LDAP Bind 密码。
+13. 只有 `admin` 角色可访问用户、LDAP 和审计管理；`editor` 角色只可管理用例。
+14. 登录和所有数据/配置写操作必须继续写入审计日志，审计查询必须保持分页。
+15. 源码运行、独立离线目录和 Docker 镜像统一使用 Node.js 24.x LTS；不得降级到 Node.js 20。
 
 ## 关键目录
 
@@ -32,7 +37,11 @@ DDT Insight 是完全离线运行的 Next.js 全栈用例数据管理平台：
 - `lib/db.ts`：SQLite 初始化与性能参数。
 - `lib/repository.ts`：索引查询、导入写入、编辑和统计逻辑。
 - `lib/spreadsheet.ts`：表格解析与导出。
-- `lib/auth.ts`：本地管理员 Session。
+- `lib/auth.ts`：本地与 LDAP 登录、签名 Session。
+- `lib/users.ts`：用户初始化、角色、状态与密码管理。
+- `lib/ldap.ts`：LDAP 配置、连接测试与认证。
+- `lib/audit.ts`：安全审计写入与分页查询。
+- `lib/security.ts`：scrypt 密码摘要与 LDAP 密钥加密。
 - `vendor/`：离线保留的 SheetJS 依赖包。
 - `scripts/package-offline.mjs`：独立离线运行目录生成脚本。
 - `.github/workflows/release-image.yml`：Docker 镜像离线包 Release 流水线。
@@ -46,7 +55,7 @@ DDT Insight 是完全离线运行的 Next.js 全栈用例数据管理平台：
 - `GET /api/stats`
 - `GET /api/health`
 
-需要管理员 Session：
+需要已登录的管理员或编辑员：
 
 - `GET /api/cases`
 - `PATCH /api/cases/[caseId]`
@@ -54,9 +63,18 @@ DDT Insight 是完全离线运行的 Next.js 全栈用例数据管理平台：
 - `POST /api/import`
 - `GET /api/export`
 
+仅 `admin` 角色：
+
+- `GET/POST /api/admin/users`
+- `PATCH/DELETE /api/admin/users/[id]`
+- `GET/PUT /api/admin/ldap`
+- `POST /api/admin/ldap/test`
+- `GET /api/admin/audit`
+
 ## 开发与验收命令
 
 ```bash
+nvm use
 npm install
 npm run typecheck
 npm run build
@@ -85,11 +103,16 @@ docker compose config
 7. 管理 API 未登录返回 401。
 8. 空数据库时公开大盘和管理工作台正常显示。
 9. 页面资源中不存在外部 HTTP 依赖。
+10. 空数据库能初始化本地管理员，旧数据库升级不影响用例数据。
+11. 编辑员访问系统管理接口返回 403，禁用用户的现有 Session 立即失效。
+12. LDAP Bind 密码加密落库且 API 不回传明文；过滤器缺少占位符时拒绝保存。
+13. 成功/失败登录及用户、LDAP、用例写操作均生成可分页查询的审计事件。
 
 ## 风格与性能
 
 - 保持现有 Apple-Like 视觉语言和响应式布局。
 - 2K/4K 断点下字体、工作台侧栏和 CaseID 列表宽度必须同步缩放，避免只放大文字导致换行或溢出。
+- 桌面端主导航必须可一键隐藏和恢复；CaseID 列表必须可拖拽缩放，并提供紧凑、默认和适应最长 ID 的快捷操作。
 - 桌面端字段编辑按钮在悬浮字段卡片后显示；移动端必须保持常显。
 - CaseID 使用前缀检索以命中 B-tree 索引。
 - 避免在开放 API 热路径中执行全表扫描、统计聚合或文件解析。

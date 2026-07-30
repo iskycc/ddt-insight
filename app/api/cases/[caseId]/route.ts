@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { auditRequest } from "@/lib/audit";
 import { errorResponse, requireApiSession } from "@/lib/http";
 import { getCase, updateCaseColumn } from "@/lib/repository";
 
@@ -45,7 +46,8 @@ export async function PATCH(
   request: NextRequest,
   context: { params: Promise<{ caseId: string }> },
 ) {
-  if (!(await requireApiSession())) {
+  const session = await requireApiSession();
+  if (!session) {
     return errorResponse("请先登录", 401);
   }
 
@@ -69,8 +71,28 @@ export async function PATCH(
   try {
     const updated = updateCaseColumn(caseId, column, body.value ?? null);
     if (!updated) return errorResponse("未找到该 CaseID", 404);
+    auditRequest(request, session, {
+      action: "case.update",
+      resourceType: "case",
+      resourceId: caseId,
+      detail: {
+        column,
+        nextCaseId:
+          column === "CaseID" ? String(body.value ?? "") : undefined,
+      },
+    });
     return NextResponse.json(updated);
   } catch (error) {
+    auditRequest(request, session, {
+      action: "case.update",
+      resourceType: "case",
+      resourceId: caseId,
+      result: "failure",
+      detail: {
+        column,
+        reason: error instanceof Error ? error.message : "unknown",
+      },
+    });
     return errorResponse(
       error instanceof Error ? error.message : "修改用例失败",
     );

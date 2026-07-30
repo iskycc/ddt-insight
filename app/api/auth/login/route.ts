@@ -1,5 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import { setSessionCookie, validateCredentials } from "@/lib/auth";
+import {
+  authenticateCredentials,
+  authenticationProviderFor,
+  setSessionCookie,
+} from "@/lib/auth";
+import { auditRequest } from "@/lib/audit";
 import { errorResponse } from "@/lib/http";
 
 export async function POST(request: NextRequest) {
@@ -14,10 +19,41 @@ export async function POST(request: NextRequest) {
   const username = body.username?.trim() ?? "";
   const password = body.password ?? "";
 
-  if (!validateCredentials(username, password)) {
+  if (!username || username.length > 128 || password.length > 512) {
+    auditRequest(request, null, {
+      actorUsername: username || "anonymous",
+      action: "auth.login",
+      resourceType: "session",
+      result: "failure",
+      detail: { reason: "invalid_input" },
+    });
     return errorResponse("用户名或密码不正确", 401);
   }
 
-  await setSessionCookie(username);
-  return NextResponse.json({ ok: true, username });
+  const user = await authenticateCredentials(username, password);
+  if (!user) {
+    auditRequest(request, null, {
+      actorUsername: username || "anonymous",
+      actorProvider: authenticationProviderFor(username),
+      action: "auth.login",
+      resourceType: "session",
+      result: "failure",
+      detail: { reason: "invalid_credentials" },
+    });
+    return errorResponse("用户名或密码不正确", 401);
+  }
+
+  await setSessionCookie(user);
+  auditRequest(request, user, {
+    action: "auth.login",
+    resourceType: "session",
+    result: "success",
+  });
+  return NextResponse.json({
+    ok: true,
+    username: user.username,
+    displayName: user.displayName,
+    role: user.role,
+    provider: user.provider,
+  });
 }

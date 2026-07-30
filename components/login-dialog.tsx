@@ -9,7 +9,7 @@ import { useRouter } from "next/navigation";
 export function LoginDialog({ authenticated }: { authenticated: boolean }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
-  const [username, setUsername] = useState("admin");
+  const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
@@ -155,10 +155,6 @@ export function LoginDialog({ authenticated }: { authenticated: boolean }) {
                   {!submitting && <ArrowRight size={17} />}
                 </button>
               </form>
-
-              <div className="login-footnote">
-                首次使用默认密码为 <code>insight-admin</code>
-              </div>
             </section>
           </div>,
           document.body,

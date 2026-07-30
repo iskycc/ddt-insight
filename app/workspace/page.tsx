@@ -13,5 +13,13 @@ export default async function WorkspacePage() {
   const session = await getSession();
   if (!session) redirect("/");
 
-  return <WorkspaceClient username={session.username} />;
+  return (
+    <WorkspaceClient
+      userId={session.userId}
+      username={session.username}
+      displayName={session.displayName}
+      role={session.role}
+      provider={session.provider}
+    />
+  );
 }

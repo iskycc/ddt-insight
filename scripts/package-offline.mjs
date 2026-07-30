@@ -11,6 +11,7 @@ const projectRoot = process.cwd();
 const standaloneSource = path.join(projectRoot, ".next", "standalone");
 const releaseRoot = path.join(projectRoot, "release");
 const releaseDirectory = path.join(releaseRoot, "ddt-insight-offline");
+const nodeVersionCheck = path.join(projectRoot, "scripts", "check-node.mjs");
 
 if (!existsSync(standaloneSource)) {
   throw new Error("没有找到生产构建，请先执行 npm run build");
@@ -36,11 +37,13 @@ rmSync(path.join(releaseDirectory, "data"), {
   force: true,
 });
 mkdirSync(path.join(releaseDirectory, "data"), { recursive: true });
+cpSync(nodeVersionCheck, path.join(releaseDirectory, "check-node.mjs"));
 
 writeFileSync(
   path.join(releaseDirectory, "start.sh"),
   `#!/usr/bin/env sh
 set -eu
+node check-node.mjs
 HOSTNAME="\${HOSTNAME:-0.0.0.0}" PORT="\${PORT:-3000}" node server.js
 `,
   { mode: 0o755 },
@@ -49,6 +52,8 @@ HOSTNAME="\${HOSTNAME:-0.0.0.0}" PORT="\${PORT:-3000}" node server.js
 writeFileSync(
   path.join(releaseDirectory, "start.cmd"),
   `@echo off\r
+node check-node.mjs\r
+if errorlevel 1 exit /b %errorlevel%\r
 if "%HOSTNAME%"=="" set HOSTNAME=0.0.0.0\r
 if "%PORT%"=="" set PORT=3000\r
 node server.js\r

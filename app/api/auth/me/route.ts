@@ -9,5 +9,8 @@ export async function GET() {
   return NextResponse.json({
     authenticated: true,
     username: session.username,
+    displayName: session.displayName,
+    role: session.role,
+    provider: session.provider,
   });
 }

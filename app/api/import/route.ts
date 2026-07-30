@@ -3,6 +3,7 @@ import {
   extractSpreadsheetsFromZip,
   isZipFile,
 } from "@/lib/archive";
+import { auditRequest } from "@/lib/audit";
 import { errorResponse, requireApiSession } from "@/lib/http";
 import { parseAndImportSpreadsheet } from "@/lib/spreadsheet";
 import type { ImportResult } from "@/lib/types";
@@ -11,7 +12,8 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
 export async function POST(request: NextRequest) {
-  if (!(await requireApiSession())) {
+  const session = await requireApiSession();
+  if (!session) {
     return errorResponse("请先登录", 401);
   }
 
@@ -91,6 +93,20 @@ export async function POST(request: NextRequest) {
       });
     }
   }
+
+  auditRequest(request, session, {
+    action: "case.import",
+    resourceType: "import",
+    result: results.length ? "success" : "failure",
+    detail: {
+      selectedFiles: files.length,
+      spreadsheetFiles: spreadsheets.length,
+      importedRows: results.reduce((total, result) => total + result.imported, 0),
+      insertedRows: results.reduce((total, result) => total + result.inserted, 0),
+      updatedRows: results.reduce((total, result) => total + result.updated, 0),
+      failedFiles: errors.length,
+    },
+  });
 
   return NextResponse.json(
     { results, errors },

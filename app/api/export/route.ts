@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { auditRequest } from "@/lib/audit";
 import { errorResponse, requireApiSession } from "@/lib/http";
 import { buildExportWorkbook } from "@/lib/spreadsheet";
 
@@ -10,7 +11,8 @@ function safeExportName(value: string) {
 }
 
 export async function GET(request: NextRequest) {
-  if (!(await requireApiSession())) {
+  const session = await requireApiSession();
+  if (!session) {
     return errorResponse("请先登录", 401);
   }
 
@@ -24,6 +26,15 @@ export async function GET(request: NextRequest) {
     const fileName = `ddt-cases${suffix}-${new Date()
       .toISOString()
       .slice(0, 10)}.xlsx`;
+    auditRequest(request, session, {
+      action: "case.export",
+      resourceType: "export",
+      resourceId: srNum ?? "",
+      detail: {
+        scope: caseIds.length ? "selected" : srNum ? "group" : "all",
+        selectedCases: caseIds.length,
+      },
+    });
 
     return new NextResponse(new Uint8Array(buffer), {
       status: 200,
@@ -35,6 +46,15 @@ export async function GET(request: NextRequest) {
       },
     });
   } catch (error) {
+    auditRequest(request, session, {
+      action: "case.export",
+      resourceType: "export",
+      resourceId: srNum ?? "",
+      result: "failure",
+      detail: {
+        reason: error instanceof Error ? error.message : "unknown",
+      },
+    });
     return errorResponse(
       error instanceof Error ? error.message : "导出失败",
     );

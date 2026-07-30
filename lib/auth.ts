@@ -1,58 +1,46 @@
-import {
-  createHash,
-  createHmac,
-  randomBytes,
-  timingSafeEqual,
-} from "node:crypto";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
-import path from "node:path";
+import { createHmac, timingSafeEqual } from "node:crypto";
 import { cookies } from "next/headers";
-import { dataDirectory } from "@/lib/db";
+import { authenticateLdapUser } from "@/lib/ldap";
+import { getApplicationSecret } from "@/lib/security";
+import type { AuthSession, UserRecord } from "@/lib/types";
+import {
+  authenticateLocalUser,
+  findUserById,
+  findUserForAuthentication,
+  markUserLogin,
+} from "@/lib/users";
 
 const COOKIE_NAME = "ddt_session";
 const SESSION_TTL_SECONDS = 8 * 60 * 60;
 
-interface SessionPayload {
-  username: string;
-  expiresAt: number;
-}
-
-function getSessionSecret() {
-  if (process.env.SESSION_SECRET) return process.env.SESSION_SECRET;
-
-  const secretPath = path.join(dataDirectory, ".session-secret");
-  if (!existsSync(secretPath)) {
-    writeFileSync(secretPath, randomBytes(48).toString("base64url"), {
-      mode: 0o600,
-    });
-  }
-  return readFileSync(secretPath, "utf8").trim();
-}
-
 function signatureFor(payload: string) {
-  return createHmac("sha256", getSessionSecret())
+  return createHmac("sha256", getApplicationSecret())
     .update(payload)
     .digest("base64url");
 }
 
-function safeEqual(left: string, right: string) {
-  const leftHash = createHash("sha256").update(left).digest();
-  const rightHash = createHash("sha256").update(right).digest();
-  return timingSafeEqual(leftHash, rightHash);
+export async function authenticateCredentials(
+  username: string,
+  password: string,
+) {
+  const local = authenticateLocalUser(username, password);
+  const user = local ?? (await authenticateLdapUser(username, password));
+  if (!user) return null;
+  markUserLogin(user.id);
+  return findUserById(user.id);
 }
 
-export function validateCredentials(username: string, password: string) {
-  const expectedUsername = process.env.ADMIN_USERNAME ?? "admin";
-  const expectedPassword = process.env.ADMIN_PASSWORD ?? "insight-admin";
-  return (
-    safeEqual(username, expectedUsername) &&
-    safeEqual(password, expectedPassword)
-  );
+export function authenticationProviderFor(username: string) {
+  return findUserForAuthentication(username)?.provider ?? "unknown";
 }
 
-export function createSessionToken(username: string) {
-  const payload: SessionPayload = {
-    username,
+export function createSessionToken(user: UserRecord) {
+  const payload: AuthSession = {
+    userId: user.id,
+    username: user.username,
+    displayName: user.displayName,
+    provider: user.provider,
+    role: user.role,
     expiresAt: Date.now() + SESSION_TTL_SECONDS * 1000,
   };
   const encoded = Buffer.from(JSON.stringify(payload)).toString("base64url");
@@ -77,8 +65,16 @@ export function verifySessionToken(token: string | undefined) {
   try {
     const payload = JSON.parse(
       Buffer.from(encoded, "base64url").toString("utf8"),
-    ) as SessionPayload;
-    if (payload.expiresAt <= Date.now()) return null;
+    ) as AuthSession;
+    if (
+      payload.expiresAt <= Date.now() ||
+      !payload.userId ||
+      !payload.username ||
+      !["local", "ldap"].includes(payload.provider) ||
+      !["admin", "editor"].includes(payload.role)
+    ) {
+      return null;
+    }
     return payload;
   } catch {
     return null;
@@ -87,12 +83,27 @@ export function verifySessionToken(token: string | undefined) {
 
 export async function getSession() {
   const cookieStore = await cookies();
-  return verifySessionToken(cookieStore.get(COOKIE_NAME)?.value);
+  const payload = verifySessionToken(cookieStore.get(COOKIE_NAME)?.value);
+  if (!payload) return null;
+
+  const user = findUserById(payload.userId);
+  if (
+    !user?.enabled ||
+    user.username !== payload.username ||
+    user.provider !== payload.provider ||
+    user.role !== payload.role
+  ) {
+    return null;
+  }
+  return {
+    ...payload,
+    displayName: user.displayName,
+  };
 }
 
-export async function setSessionCookie(username: string) {
+export async function setSessionCookie(user: UserRecord) {
   const cookieStore = await cookies();
-  cookieStore.set(COOKIE_NAME, createSessionToken(username), {
+  cookieStore.set(COOKIE_NAME, createSessionToken(user), {
     httpOnly: true,
     sameSite: "strict",
     secure: process.env.COOKIE_SECURE === "true",

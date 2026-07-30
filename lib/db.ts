@@ -67,6 +67,61 @@ function createDatabase() {
 
     CREATE INDEX IF NOT EXISTS idx_activity_created
       ON activity (created_at DESC);
+
+    CREATE TABLE IF NOT EXISTS users (
+      id TEXT PRIMARY KEY,
+      username TEXT NOT NULL UNIQUE COLLATE NOCASE,
+      display_name TEXT NOT NULL,
+      provider TEXT NOT NULL CHECK (provider IN ('local', 'ldap')),
+      role TEXT NOT NULL CHECK (role IN ('admin', 'editor')),
+      enabled INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0, 1)),
+      password_hash TEXT,
+      last_login_at TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_users_provider
+      ON users (provider, enabled, username COLLATE NOCASE);
+
+    CREATE TABLE IF NOT EXISTS ldap_config (
+      id INTEGER PRIMARY KEY CHECK (id = 1),
+      enabled INTEGER NOT NULL DEFAULT 0 CHECK (enabled IN (0, 1)),
+      url TEXT NOT NULL DEFAULT '',
+      bind_dn TEXT NOT NULL DEFAULT '',
+      bind_password_encrypted TEXT NOT NULL DEFAULT '',
+      user_base_dn TEXT NOT NULL DEFAULT '',
+      user_filter TEXT NOT NULL DEFAULT '(uid={{username}})',
+      display_name_attribute TEXT NOT NULL DEFAULT 'displayName',
+      default_role TEXT NOT NULL DEFAULT 'editor'
+        CHECK (default_role IN ('admin', 'editor')),
+      tls_reject_unauthorized INTEGER NOT NULL DEFAULT 1
+        CHECK (tls_reject_unauthorized IN (0, 1)),
+      connect_timeout_ms INTEGER NOT NULL DEFAULT 5000,
+      updated_at TEXT NOT NULL,
+      updated_by TEXT NOT NULL DEFAULT ''
+    );
+
+    CREATE TABLE IF NOT EXISTS audit_logs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      actor_username TEXT NOT NULL,
+      actor_provider TEXT NOT NULL DEFAULT '',
+      action TEXT NOT NULL,
+      resource_type TEXT NOT NULL,
+      resource_id TEXT NOT NULL DEFAULT '',
+      result TEXT NOT NULL CHECK (result IN ('success', 'failure')),
+      ip_address TEXT NOT NULL DEFAULT '',
+      user_agent TEXT NOT NULL DEFAULT '',
+      detail_json TEXT NOT NULL DEFAULT '{}',
+      created_at TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_audit_created
+      ON audit_logs (created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_audit_actor
+      ON audit_logs (actor_username COLLATE NOCASE, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_audit_action
+      ON audit_logs (action, created_at DESC);
   `);
 
   return database;

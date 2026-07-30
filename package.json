@@ -2,17 +2,27 @@
   "name": "ddt-insight",
   "version": "1.0.2",
   "private": true,
+  "engines": {
+    "node": ">=24 <25"
+  },
   "scripts": {
+    "check:node": "node scripts/check-node.mjs",
+    "predev": "npm run check:node",
     "dev": "next dev",
+    "prebuild": "npm run check:node",
     "build": "next build",
+    "prestart": "npm run check:node",
     "start": "next start",
+    "prestart:standalone": "npm run check:node",
     "start:standalone": "node .next/standalone/server.js",
+    "prepackage:offline": "npm run check:node",
     "typecheck": "tsc --noEmit",
     "package:offline": "npm run build && node scripts/package-offline.mjs"
   },
   "dependencies": {
     "better-sqlite3": "13.0.2",
     "fflate": "0.8.3",
+    "ldapts": "8.2.0",
     "lucide-react": "0.468.0",
     "next": "16.2.12",
     "react": "19.2.8",

@@ -14,12 +14,19 @@ DDT Insight 是一个完全离线运行的用例数据管理平台。前端和�
 - 导出当前用例、指定 srNum 分组或全部用例
 - 无鉴权开放查询 API，支持 CORS
 - 公开统计大盘与管理员工作台
+- 本地用户管理，支持管理员/编辑员角色、启停、密码重置和删除
+- LDAP/Active Directory 登录、首次登录自动纳管与加密保存 Bind 密码
+- 登录、导入、修改、导出、用户和 LDAP 配置变更审计
+- 桌面端主导航一键隐藏，CaseID 列表可拖拽缩放、快捷压缩或适应最长 ID
 - 响应式适配移动端、普通桌面、2K 与 4K 大尺寸屏幕
 - 本机系统字体、本地图标、无 CDN、无远程字体、无远程图片
 
 ## 开始运行
 
+源码和独立离线目录统一要求 Node.js 24.x LTS。仓库提供 `.nvmrc`，使用 nvm 时可先运行：
+
 ```bash
+nvm use
 cp .env.example .env
 npm install
 npm run dev
@@ -27,14 +34,14 @@ npm run dev
 
 访问 `http://localhost:3000`。
 
-默认管理员账号：
+空数据库首次启动时会根据以下默认值初始化一个本地管理员：
 
 ```text
 用户名：admin
 密码：insight-admin
 ```
 
-正式使用前请务必在 `.env` 中修改密码。
+正式使用前请务必在 `.env` 中修改密码。管理员初始化后，后续密码重置和用户管理均在工作台中完成；修改环境变量不会覆盖数据库中已经存在的账户。
 
 ## 功能验收矩阵
 
@@ -53,7 +60,11 @@ npm run dev
 | 无鉴权开放 API | `/api/case` | 未登录可直接获取 JSON Map |
 | 高性能与并发 | WAL、索引、mmap、LRU | API 热路径不执行文件解析或全表扫描 |
 | 未登录统计大盘 | `/` | 不登录可以查看平台统计 |
-| 登录后用例管理 | `/workspace` | 管理接口无 Session 返回 401 |
+| 登录后用例管理 | `/workspace` | 编辑员与管理员可维护用例，接口无 Session 返回 401 |
+| 用户与角色 | 用户管理页面 | 本地用户可创建、启停、重置密码；管理员系统页对编辑员返回 403 |
+| LDAP 登录 | LDAP 页面与 `ldapts` | 服务账户搜索用户 DN，再使用用户密码 Bind；首次登录自动纳管 |
+| 审计日志 | 审计日志页面 | 登录与全部写操作可按操作者、操作、结果分页检索 |
+| 侧栏空间管理 | 工作台双侧栏 | 主导航一键隐藏；CaseID 列表支持拖拽、键盘和三种宽度快捷操作 |
 
 ## 表格规则
 
@@ -96,6 +107,19 @@ GET /api/cases/CASE-001
 
 接口无需登录，响应包含 `X-Response-Time`，并允许跨域 GET 访问。
 
+## 用户、LDAP 与审计
+
+本地账户分为两种角色：
+
+- 管理员：管理用例、用户、LDAP 配置和审计日志。
+- 编辑员：导入、检索、修改和导出用例，无权访问系统管理接口。
+
+LDAP 在“工作台 → LDAP”中配置，支持 `ldap://` 与 `ldaps://`、Bind DN、用户 Base DN、自定义用户过滤器、显示名称属性、连接超时和 TLS 证书校验。过滤器必须包含 `{{username}}`，平台会在查询前按 LDAP 过滤器规则转义用户名。LDAP 用户首次成功登录时自动进入用户目录，之后可由管理员调整角色或停用。
+
+LDAP Bind 密码通过本机 Session 密钥使用 AES-256-GCM 加密后保存，不会由 API 返回，也不会写入审计详情。备份或迁移时必须保存整个 `data/` 目录，其中同时包含 SQLite 数据库和自动生成的 `.session-secret`；如果显式配置了 `SESSION_SECRET`，迁移后必须保持一致。
+
+审计日志记录成功/失败登录、退出、用例导入、字段修改、导出、用户管理、LDAP 配置和连接测试。日志仅对管理员开放，按时间、操作者和操作建立索引并分页读取，不会一次性加载全部记录。
+
 ## 生产与离线交付
 
 普通生产运行：
@@ -111,13 +135,13 @@ npm run start:standalone
 npm run package:offline
 ```
 
-产物位于 `release/ddt-insight-offline/`。将整个目录复制到相同操作系统和 CPU 架构、已安装 Node.js 20.9 或更高版本的机器，配置 `.env` 后运行：
+产物位于 `release/ddt-insight-offline/`。将整个目录复制到相同操作系统和 CPU 架构、已安装 Node.js 24.x LTS 的机器，配置 `.env` 后运行：
 
 ```bash
 ./start.sh
 ```
 
-Windows 可以运行 `start.cmd`。由于 SQLite 驱动包含本机二进制文件，应在目标操作系统上生成对应的离线包。
+Windows 可以运行 `start.cmd`。启动脚本会先检查 Node.js 主版本，不是 24.x 时会直接给出错误，避免进入不受支持的运行状态。由于 SQLite 驱动包含本机二进制文件，应在目标操作系统上生成对应的离线包。
 
 ## Docker 部署
 
@@ -170,7 +194,7 @@ docker run -d \
   iskycc/ddt-insight:latest
 ```
 
-Docker 镜像包含 Next.js 服务和全部运行依赖，但不包含数据库或测试数据。首次启动时会在挂载的数据目录中自动创建空数据库。容器启动后不需要访问互联网。
+Docker 镜像基于 Node.js 24 Alpine，包含 Next.js 服务和全部运行依赖，但不包含数据库或测试数据。首次启动时会在挂载的数据目录中自动创建空数据库。容器启动后不需要访问互联网。
 
 ## GitHub Actions 镜像发布
 
@@ -221,7 +245,8 @@ gzip -dc ddt-insight-1.0.2-linux-arm64.tar.gz | docker load
 | 变量 | 默认值 | 说明 |
 | --- | --- | --- |
 | `ADMIN_USERNAME` | `admin` | 管理员用户名 |
-| `ADMIN_PASSWORD` | `insight-admin` | 管理员密码 |
+| `ADMIN_PASSWORD` | `insight-admin` | 空数据库首次启动时初始化的管理员密码 |
+| `SESSION_SECRET` | 自动生成 | Session 签名与 LDAP 密码加密密钥；通常由 `data/.session-secret` 持久化 |
 | `DDT_DATA_DIR` | `./data` | 数据库存储目录 |
 | `COOKIE_SECURE` | `false` | 仅在 HTTPS 部署时设为 `true` |
 | `MAX_IMPORT_MB` | `200` | 单个导入文件的大小上限 |
