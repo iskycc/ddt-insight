@@ -472,14 +472,33 @@
 }
 
 .sourcePanel {
+  width: 100%;
+  max-width: 1250px;
   min-height: 420px;
+  margin-right: auto;
+  margin-left: auto;
   overflow: hidden;
-  border-radius: 18px;
+  border-color: #e1e3e6;
+  border-radius: 13px;
+  box-shadow: 0 4px 14px rgba(25, 36, 52, 0.025);
+}
+
+.sourceHeader {
+  padding: 18px 20px;
+}
+
+.sourceHeader h2 {
+  font-size: 0.75rem;
+  font-weight: 680;
+}
+
+.sourceHeader p {
+  font-size: 0.5rem;
 }
 
 .filters {
   display: grid;
-  grid-template-columns: minmax(240px, 1fr) 160px 170px;
+  grid-template-columns: minmax(240px, 1fr) 150px 160px;
   gap: 10px;
   padding: 14px 18px;
   border-bottom: 1px solid #e9ebee;
@@ -504,7 +523,31 @@
   border: 0;
   color: #31353a;
   background: transparent;
-  font-size: 0.625rem;
+  font-size: 0.5rem;
+}
+
+.filters :global(.custom-select-trigger) {
+  min-height: 36px;
+  padding: 0 10px;
+  border: 1px solid #dfe3e7;
+  border-radius: 10px;
+  color: #4d535b;
+  background: #fff;
+  font-size: 0.5rem;
+  font-weight: 560;
+  line-height: 1;
+}
+
+.filters :global(.custom-select-trigger:hover) {
+  border-color: #c8d9e8;
+  background: #fbfdff;
+}
+
+.filters :global(.custom-select-trigger:focus-visible),
+.filters :global(.custom-select.open .custom-select-trigger) {
+  border-color: #93bee7;
+  background: #fff;
+  box-shadow: 0 0 0 3px rgba(26, 129, 225, 0.09);
 }
 
 .sourceList {
@@ -536,13 +579,13 @@
 }
 
 .sourceMeta strong {
-  font-size: 0.625rem;
+  font-size: 0.5625rem;
 }
 
 .sourceMeta small {
   margin-top: 3px;
   color: #8b929a;
-  font-size: 0.5rem;
+  font-size: 0.4375rem;
 }
 
 .sourceStats {
@@ -557,7 +600,7 @@
   border-radius: 7px;
   color: #66707a;
   background: #edf1f4;
-  font-size: 0.5rem;
+  font-size: 0.4375rem;
 }
 
 .sourceFiles {
@@ -575,7 +618,7 @@
   gap: 5px;
   overflow: hidden;
   color: #64707b;
-  font-size: 0.5rem;
+  font-size: 0.4375rem;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -585,7 +628,7 @@
   min-height: 180px;
   place-items: center;
   color: #9299a1;
-  font-size: 0.625rem;
+  font-size: 0.5rem;
 }
 
 .pagination {
@@ -596,7 +639,7 @@
   padding: 12px 18px 16px;
   color: #808791;
   border-top: 1px solid #eceef0;
-  font-size: 0.5625rem;
+  font-size: 0.4375rem;
 }
 
 @media (max-width: 720px) {
