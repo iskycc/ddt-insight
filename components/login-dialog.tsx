@@ -75,7 +75,7 @@ export function LoginDialog({ authenticated }: { authenticated: boolean }) {
         type="button"
         onClick={() => setOpen(true)}
       >
-        管理员登录
+        工作台登录
         <ArrowRight size={15} />
       </button>
 
@@ -108,8 +108,8 @@ export function LoginDialog({ authenticated }: { authenticated: boolean }) {
                 <LockKeyhole size={24} />
               </div>
               <span className="eyebrow">安全访问</span>
-              <h2 id="login-title">欢迎回来</h2>
-              <p>登录后即可导入、编辑和导出用例数据。</p>
+              <h2 id="login-title">登录工作台</h2>
+              <p>使用本地账户或 LDAP 账户访问用例工作台。</p>
 
               <form onSubmit={submit}>
                 <label>

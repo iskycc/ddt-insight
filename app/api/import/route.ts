@@ -84,7 +84,11 @@ export async function POST(request: NextRequest) {
   for (const spreadsheet of spreadsheets) {
     try {
       results.push(
-        parseAndImportSpreadsheet(spreadsheet.buffer, spreadsheet.fileName),
+        parseAndImportSpreadsheet(
+          spreadsheet.buffer,
+          spreadsheet.fileName,
+          session,
+        ),
       );
     } catch (error) {
       errors.push({

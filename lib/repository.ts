@@ -1,6 +1,8 @@
 import { randomUUID } from "node:crypto";
+import { appendCaseHistory } from "@/lib/case-history";
 import { db } from "@/lib/db";
 import type {
+  AuthSession,
   CaseData,
   CaseListItem,
   DashboardStats,
@@ -13,6 +15,10 @@ interface ImportPayload {
   columns: string[];
   rows: CaseData[];
   startedAt: number;
+  actor: Pick<
+    AuthSession,
+    "userId" | "username" | "displayName" | "provider"
+  >;
 }
 
 const caseCache = new Map<string, CaseData>();
@@ -44,9 +50,12 @@ export function importCases(payload: ImportPayload): ImportResult {
     payload.rows.map((row) => String(row.srNum ?? "")),
   );
 
-  const existsStatement = db.prepare(
-    "SELECT 1 FROM cases WHERE case_id = ? LIMIT 1",
-  );
+  const existingStatement = db.prepare(`
+    SELECT record_id AS recordId, data_json AS dataJson
+    FROM cases
+    WHERE case_id = ?
+    LIMIT 1
+  `);
   const insertFileStatement = db.prepare(`
     INSERT INTO source_files (
       id, original_name, imported_at, row_count, column_count,
@@ -55,10 +64,11 @@ export function importCases(payload: ImportPayload): ImportResult {
   `);
   const upsertCaseStatement = db.prepare(`
     INSERT INTO cases (
-      case_id, sr_num, data_json, source_file_id, source_name,
+      case_id, record_id, sr_num, data_json, source_file_id, source_name,
       created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(case_id) DO UPDATE SET
+      case_id = excluded.case_id,
       sr_num = excluded.sr_num,
       data_json = excluded.data_json,
       source_file_id = excluded.source_file_id,
@@ -88,10 +98,14 @@ export function importCases(payload: ImportPayload): ImportResult {
     for (const row of payload.rows) {
       const caseId = String(row.CaseID);
       const srNum = String(row.srNum);
-      const exists = Boolean(existsStatement.get(caseId));
+      const existing = existingStatement.get(caseId) as
+        | { recordId: string; dataJson: string }
+        | undefined;
+      const recordId = existing?.recordId ?? randomUUID();
 
       upsertCaseStatement.run(
         caseId,
+        recordId,
         srNum,
         JSON.stringify(row),
         fileId,
@@ -100,8 +114,21 @@ export function importCases(payload: ImportPayload): ImportResult {
         now,
       );
 
-      if (exists) updated += 1;
-      else inserted += 1;
+      if (existing) {
+        updated += 1;
+        appendCaseHistory({
+          caseRecordId: existing.recordId,
+          caseId,
+          changeType: "import_overwrite",
+          actor: payload.actor,
+          sourceName: payload.fileName,
+          before: JSON.parse(existing.dataJson) as CaseData,
+          after: row,
+          createdAt: now,
+        });
+      } else {
+        inserted += 1;
+      }
       invalidateCaseCache(caseId);
     }
 
@@ -217,14 +244,29 @@ export function updateCaseColumn(
   caseId: string,
   column: string,
   value: string | number | boolean | null,
+  actor: Pick<
+    AuthSession,
+    "userId" | "username" | "displayName" | "provider"
+  >,
 ) {
-  const existing = getCase(caseId);
-  if (!existing) return null;
+  const stored = db
+    .prepare(`
+      SELECT record_id AS recordId, data_json AS dataJson
+      FROM cases
+      WHERE case_id = ?
+      LIMIT 1
+    `)
+    .get(caseId) as { recordId: string; dataJson: string } | undefined;
+  if (!stored) return null;
+
+  const existing = JSON.parse(stored.dataJson) as CaseData;
   if (!(column in existing)) {
     throw new Error(`列“${column}”不存在`);
   }
 
   const next: CaseData = { ...existing, [column]: value };
+  if (Object.is(existing[column], value)) return existing;
+
   const now = new Date().toISOString();
 
   if (column === "CaseID") {
@@ -236,10 +278,10 @@ export function updateCaseColumn(
       .prepare(`
         SELECT case_id FROM cases
         WHERE case_id = ? COLLATE NOCASE
-          AND case_id != ? COLLATE BINARY
+          AND record_id != ?
         LIMIT 1
       `)
-      .get(nextCaseId, caseId);
+      .get(nextCaseId, stored.recordId);
     if (duplicate) throw new Error(`CaseID “${nextCaseId}”已经存在`);
 
     next.CaseID = nextCaseId;
@@ -255,6 +297,16 @@ export function updateCaseColumn(
           INSERT INTO activity (kind, detail, amount, created_at)
           VALUES ('edit', ?, 1, ?)
         `).run(`${caseId} → ${nextCaseId}`, now);
+        appendCaseHistory({
+          caseRecordId: stored.recordId,
+          caseId: nextCaseId,
+          changeType: "edit",
+          actor,
+          sourceName: "工作台编辑",
+          before: existing,
+          after: next,
+          createdAt: now,
+        });
       })();
     } catch (error) {
       if (
@@ -288,10 +340,42 @@ export function updateCaseColumn(
       INSERT INTO activity (kind, detail, amount, created_at)
       VALUES ('edit', ?, 1, ?)
     `).run(caseId, now);
+    appendCaseHistory({
+      caseRecordId: stored.recordId,
+      caseId,
+      changeType: "edit",
+      actor,
+      sourceName: "工作台编辑",
+      before: existing,
+      after: next,
+      createdAt: now,
+    });
   })();
 
   putCaseInCache(caseId, next);
   return next;
+}
+
+export function deleteCase(caseId: string) {
+  const existing = db
+    .prepare(`
+      SELECT
+        case_id AS caseId,
+        sr_num AS srNum,
+        source_name AS sourceName
+      FROM cases
+      WHERE case_id = ?
+      LIMIT 1
+    `)
+    .get(caseId) as
+    | { caseId: string; srNum: string; sourceName: string }
+    | undefined;
+
+  if (!existing) return null;
+
+  db.prepare("DELETE FROM cases WHERE case_id = ?").run(caseId);
+  invalidateCaseCache(caseId);
+  return existing;
 }
 
 export function getCasesForExport(options: {

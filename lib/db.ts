@@ -39,6 +39,7 @@ function createDatabase() {
 
     CREATE TABLE IF NOT EXISTS cases (
       case_id TEXT PRIMARY KEY COLLATE NOCASE,
+      record_id TEXT NOT NULL,
       sr_num TEXT NOT NULL COLLATE NOCASE,
       data_json TEXT NOT NULL,
       source_file_id TEXT NOT NULL,
@@ -106,6 +107,8 @@ function createDatabase() {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       actor_username TEXT NOT NULL,
       actor_provider TEXT NOT NULL DEFAULT '',
+      category TEXT NOT NULL DEFAULT 'system'
+        CHECK (category IN ('auth', 'case', 'user', 'ldap', 'system')),
       action TEXT NOT NULL,
       resource_type TEXT NOT NULL,
       resource_id TEXT NOT NULL DEFAULT '',
@@ -122,6 +125,68 @@ function createDatabase() {
       ON audit_logs (actor_username COLLATE NOCASE, created_at DESC);
     CREATE INDEX IF NOT EXISTS idx_audit_action
       ON audit_logs (action, created_at DESC);
+  `);
+
+  const caseColumns = database
+    .prepare("PRAGMA table_info(cases)")
+    .all() as Array<{ name: string }>;
+  if (!caseColumns.some((column) => column.name === "record_id")) {
+    database.exec("ALTER TABLE cases ADD COLUMN record_id TEXT");
+  }
+  database.exec(`
+    UPDATE cases
+    SET record_id = lower(hex(randomblob(16)))
+    WHERE record_id IS NULL OR record_id = '';
+
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_cases_record_id
+      ON cases (record_id);
+
+    CREATE TABLE IF NOT EXISTS case_history (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      case_record_id TEXT NOT NULL,
+      case_id TEXT NOT NULL COLLATE NOCASE,
+      change_type TEXT NOT NULL
+        CHECK (change_type IN ('edit', 'import_overwrite')),
+      actor_user_id TEXT NOT NULL DEFAULT '',
+      actor_username TEXT NOT NULL,
+      actor_display_name TEXT NOT NULL DEFAULT '',
+      actor_provider TEXT NOT NULL DEFAULT '',
+      source_name TEXT NOT NULL DEFAULT '',
+      before_json TEXT NOT NULL,
+      after_json TEXT NOT NULL,
+      changes_json TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_case_history_record
+      ON case_history (case_record_id, id DESC);
+    CREATE INDEX IF NOT EXISTS idx_case_history_case_id
+      ON case_history (case_id COLLATE NOCASE, id DESC);
+  `);
+
+  const auditColumns = database
+    .prepare("PRAGMA table_info(audit_logs)")
+    .all() as Array<{ name: string }>;
+  if (!auditColumns.some((column) => column.name === "category")) {
+    database.exec(`
+      ALTER TABLE audit_logs
+      ADD COLUMN category TEXT NOT NULL DEFAULT 'system'
+        CHECK (category IN ('auth', 'case', 'user', 'ldap', 'system'))
+    `);
+  }
+  database.exec(`
+    UPDATE audit_logs
+    SET category = CASE
+      WHEN action LIKE 'auth.%' THEN 'auth'
+      WHEN action LIKE 'case.%' THEN 'case'
+      WHEN action LIKE 'user.%' THEN 'user'
+      WHEN action LIKE 'ldap.%' THEN 'ldap'
+      ELSE 'system'
+    END
+    WHERE category = 'system';
+
+    CREATE INDEX IF NOT EXISTS idx_audit_category
+      ON audit_logs (category, created_at DESC);
   `);
 
   return database;

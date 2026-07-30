@@ -11,13 +11,16 @@ DDT Insight 是一个完全离线运行的用例数据管理平台。前端和�
 - CaseID 前缀检索、srNum 筛选与分页加载
 - 单用例逐字段查看和修改，桌面端悬浮字段显示编辑按钮，不一次性渲染大型表格
 - 普通字段、srNum、CaseID 均可修改；CaseID 改名时强制校验唯一性
+- 手工修改与导入覆盖均永久保存独立版本历史，记录修改人、来源及字段前后差异
+- 用例可经二次确认删除；删除事件进入安全审计，既有修改历史不会被级联清除
 - 导出当前用例、指定 srNum 分组或全部用例
 - 无鉴权开放查询 API，支持 CORS
 - 公开统计大盘与管理员工作台
 - 本地用户管理，支持管理员/编辑员角色、启停、密码重置和删除
 - LDAP/Active Directory 登录、首次登录自动纳管与加密保存 Bind 密码
-- 登录、导入、修改、导出、用户和 LDAP 配置变更审计
+- 安全审计支持事件分类、组合筛选和人员、资源、操作、IP、详情搜索
 - 桌面端主导航一键隐藏，CaseID 列表可拖拽缩放、快捷压缩或适应最长 ID
+- 工作台下拉选择、复选框、详情箭头和滚动条采用统一的自定义 Apple-Like 控件
 - 响应式适配移动端、普通桌面、2K 与 4K 大尺寸屏幕
 - 本机系统字体、本地图标、无 CDN、无远程字体、无远程图片
 
@@ -56,6 +59,8 @@ npm run dev
 | 批量导入 | `/api/import` | 单次最多导入 30 个表格；支持多文件或 ZIP 根目录/一层子目录 |
 | 导出 | `/api/export` | 支持当前用例、srNum 分组和全部用例 |
 | 任意字段修改 | 字段卡片与 PATCH API | 普通字段、srNum、CaseID 均可编辑 |
+| 永久修改历史 | 用例详情时间线与 `case_history` | 编辑、覆盖的操作者和字段前后差异追加保存，CaseID 改名后历史链不断开 |
+| 用例删除 | 详情工具栏与 DELETE API | 删除需二次确认并写安全审计，修改历史不被删除 |
 | 大数据按 CaseID 切换 | 分页列表与详情面板 | 前端每页最多读取 60 个索引项，只展示一个详情 |
 | 无鉴权开放 API | `/api/case` | 未登录可直接获取 JSON Map |
 | 高性能与并发 | WAL、索引、mmap、LRU | API 热路径不执行文件解析或全表扫描 |
@@ -63,7 +68,7 @@ npm run dev
 | 登录后用例管理 | `/workspace` | 编辑员与管理员可维护用例，接口无 Session 返回 401 |
 | 用户与角色 | 用户管理页面 | 本地用户可创建、启停、重置密码；管理员系统页对编辑员返回 403 |
 | LDAP 登录 | LDAP 页面与 `ldapts` | 服务账户搜索用户 DN，再使用用户密码 Bind；首次登录自动纳管 |
-| 审计日志 | 审计日志页面 | 登录与全部写操作可按操作者、操作、结果分页检索 |
+| 审计日志 | 审计日志页面 | 可按分类、操作、结果分页筛选，并搜索人员、资源、IP 和事件详情 |
 | 侧栏空间管理 | 工作台双侧栏 | 主导航一键隐藏；CaseID 列表支持拖拽、键盘和三种宽度快捷操作 |
 
 ## 表格规则
@@ -118,7 +123,9 @@ LDAP 在“工作台 → LDAP”中配置，支持 `ldap://` 与 `ldaps://`、Bi
 
 LDAP Bind 密码通过本机 Session 密钥使用 AES-256-GCM 加密后保存，不会由 API 返回，也不会写入审计详情。备份或迁移时必须保存整个 `data/` 目录，其中同时包含 SQLite 数据库和自动生成的 `.session-secret`；如果显式配置了 `SESSION_SECRET`，迁移后必须保持一致。
 
-审计日志记录成功/失败登录、退出、用例导入、字段修改、导出、用户管理、LDAP 配置和连接测试。日志仅对管理员开放，按时间、操作者和操作建立索引并分页读取，不会一次性加载全部记录。
+用例内容历史与安全审计相互独立。手工编辑和重复 CaseID 导入覆盖会在每个用例的详情时间线中永久追加记录，包含操作者、来源、时间、完整前后快照和逐字段差异；CaseID 改名仍沿用同一条历史链。历史接口要求管理员或编辑员登录并使用游标分页，页面不会一次性加载全部版本。
+
+安全审计记录成功/失败登录、退出、用例导入、导出、删除、用户管理、LDAP 配置和连接测试，不保存字段修改前后的内容。日志仅对管理员开放，可按身份认证、用例操作、用户管理、LDAP 配置和系统事件分类筛选，并可搜索人员、资源、操作、IP 与事件详情；查询始终分页，不会一次性加载全部记录。
 
 ## 生产与离线交付
 
@@ -149,7 +156,7 @@ Windows 可以运行 `start.cmd`。启动脚本会先检查 Node.js 主版本，
 
 ```text
 iskycc/ddt-insight:latest
-iskycc/ddt-insight:1.0.1
+iskycc/ddt-insight:1.0.4
 ```
 
 使用 Docker Compose：
@@ -208,20 +215,20 @@ Docker 镜像基于 Node.js 24 Alpine，包含 Next.js 服务和全部运行依�
 工作流不会登录 Docker Hub，也不会执行 `docker push`。可以通过推送 `v*` 标签触发：
 
 ```bash
-git tag v1.0.3
-git push origin v1.0.3
+git tag v1.0.4
+git push origin v1.0.4
 ```
 
-也可以在 GitHub Actions 页面手动运行，并输入 `1.0.3` 或 `v1.0.3`。下载与目标机器 CPU 架构匹配的镜像包后，可在离线机器执行：
+也可以在 GitHub Actions 页面手动运行，并输入 `1.0.4` 或 `v1.0.4`。下载与目标机器 CPU 架构匹配的镜像包后，可在离线机器执行：
 
 ```bash
 # x86-64 机器
-sha256sum -c ddt-insight-1.0.3-linux-amd64.tar.gz.sha256
-gzip -dc ddt-insight-1.0.3-linux-amd64.tar.gz | docker load
+sha256sum -c ddt-insight-1.0.4-linux-amd64.tar.gz.sha256
+gzip -dc ddt-insight-1.0.4-linux-amd64.tar.gz | docker load
 
 # ARM64 / AArch64 机器
-sha256sum -c ddt-insight-1.0.3-linux-arm64.tar.gz.sha256
-gzip -dc ddt-insight-1.0.3-linux-arm64.tar.gz | docker load
+sha256sum -c ddt-insight-1.0.4-linux-arm64.tar.gz.sha256
+gzip -dc ddt-insight-1.0.4-linux-arm64.tar.gz | docker load
 ```
 
 两个离线包加载后都提供 `iskycc/ddt-insight:<版本>` 和 `iskycc/ddt-insight:latest` 标签。ARM 构建目标为当前服务器和开发板常用的 64 位 `arm64`，不包含 32 位 `arm/v7`。

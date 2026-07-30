@@ -27,7 +27,12 @@ import {
   useMemo,
   useState,
 } from "react";
+import {
+  CustomCheckbox,
+  CustomSelect,
+} from "@/components/custom-controls";
 import type {
+  AuditCategory,
   AuditLogItem,
   LdapConfigPublic,
   UserRecord,
@@ -35,6 +40,14 @@ import type {
 } from "@/lib/types";
 
 type ToastHandler = (message: string) => void;
+const roleOptions = [
+  { value: "editor", label: "编辑员 — 管理用例" },
+  { value: "admin", label: "管理员 — 管理用例与系统" },
+];
+const compactRoleOptions = [
+  { value: "admin", label: "管理员" },
+  { value: "editor", label: "编辑员" },
+];
 
 async function responseError(response: Response, fallback: string) {
   try {
@@ -245,19 +258,17 @@ export function UserManagement({
                   </em>
                 </span>
                 <span>
-                  <select
+                  <CustomSelect
                     value={user.role}
-                    aria-label={`修改 ${user.username} 的角色`}
+                    ariaLabel={`修改 ${user.username} 的角色`}
                     disabled={busyId === user.id || user.id === currentUserId}
-                    onChange={(event) =>
+                    options={compactRoleOptions}
+                    onChange={(value) =>
                       void update(user, {
-                        role: event.target.value as UserRole,
+                        role: value as UserRole,
                       })
                     }
-                  >
-                    <option value="admin">管理员</option>
-                    <option value="editor">编辑员</option>
-                  </select>
+                  />
                 </span>
                 <span className="admin-muted">{localDate(user.lastLoginAt)}</span>
                 <span>
@@ -416,7 +427,7 @@ function UserDialog({
         </h2>
         <p>
           {mode === "create"
-            ? "创建后用户可立即登录管理工作台。"
+            ? "创建后用户可立即登录工作台。"
             : "新密码保存后立即生效，旧密码将不可使用。"}
         </p>
 
@@ -444,16 +455,15 @@ function UserDialog({
                   />
                 </label>
               </div>
-              <label>
+              <div className="admin-field">
                 <span>角色</span>
-                <select
+                <CustomSelect
                   value={role}
-                  onChange={(event) => setRole(event.target.value as UserRole)}
-                >
-                  <option value="editor">编辑员 — 管理用例</option>
-                  <option value="admin">管理员 — 管理用例与系统</option>
-                </select>
-              </label>
+                  ariaLabel="选择用户角色"
+                  options={roleOptions}
+                  onChange={(value) => setRole(value as UserRole)}
+                />
+              </div>
             </>
           )}
           <label>
@@ -648,7 +658,7 @@ export function LdapSettings({ onToast }: { onToast: ToastHandler }) {
           </span>
           <p>
             <strong>允许 LDAP 登录</strong>
-            <small>本地管理员登录始终保留，可用于目录服务故障恢复。</small>
+            <small>本地管理员账户始终保留，可用于目录服务故障恢复。</small>
           </p>
           <button
             className={`toggle-control ${config.enabled ? "enabled" : ""}`}
@@ -693,19 +703,12 @@ export function LdapSettings({ onToast }: { onToast: ToastHandler }) {
               />
             </label>
           </div>
-          <label className="checkbox-row">
-            <input
-              checked={config.tlsRejectUnauthorized}
-              type="checkbox"
-              onChange={(event) =>
-                field("tlsRejectUnauthorized", event.target.checked)
-              }
-            />
-            <span>
-              <strong>校验 TLS 服务器证书</strong>
-              <small>仅在使用自签名证书且已评估风险时关闭。</small>
-            </span>
-          </label>
+          <CustomCheckbox
+            checked={config.tlsRejectUnauthorized}
+            label="校验 TLS 服务器证书"
+            description="仅在使用自签名证书且已评估风险时关闭。"
+            onChange={(checked) => field("tlsRejectUnauthorized", checked)}
+          />
 
           <div className="form-section-heading">
             <span>02</span>
@@ -739,16 +742,12 @@ export function LdapSettings({ onToast }: { onToast: ToastHandler }) {
             </label>
           </div>
           {config.hasBindPassword && (
-            <label className="checkbox-row compact">
-              <input
-                checked={clearBindPassword}
-                type="checkbox"
-                onChange={(event) => setClearBindPassword(event.target.checked)}
-              />
-              <span>
-                <strong>清除已保存的 Bind 密码</strong>
-              </span>
-            </label>
+            <CustomCheckbox
+              checked={clearBindPassword}
+              compact
+              label="清除已保存的 Bind 密码"
+              onChange={setClearBindPassword}
+            />
           )}
 
           <div className="form-section-heading">
@@ -787,18 +786,17 @@ export function LdapSettings({ onToast }: { onToast: ToastHandler }) {
               />
             </label>
           </div>
-          <label>
+          <div className="admin-field">
             <span>新 LDAP 用户默认角色</span>
-            <select
+            <CustomSelect
               value={config.defaultRole}
-              onChange={(event) =>
-                field("defaultRole", event.target.value as UserRole)
+              ariaLabel="选择新 LDAP 用户默认角色"
+              options={roleOptions}
+              onChange={(value) =>
+                field("defaultRole", value as UserRole)
               }
-            >
-              <option value="editor">编辑员 — 管理用例</option>
-              <option value="admin">管理员 — 管理用例与系统</option>
-            </select>
-          </label>
+            />
+          </div>
         </div>
 
         <div className="ldap-actions">
@@ -838,6 +836,7 @@ const actionLabels: Record<string, string> = {
   "auth.logout": "退出登录",
   "case.import": "导入用例",
   "case.update": "修改用例",
+  "case.delete": "删除用例",
   "case.export": "导出用例",
   "user.create": "创建用户",
   "user.update": "更新用户",
@@ -847,27 +846,40 @@ const actionLabels: Record<string, string> = {
   "ldap.test": "测试 LDAP",
 };
 
+const auditCategoryLabels: Record<AuditCategory, string> = {
+  auth: "身份认证",
+  case: "用例操作",
+  user: "用户管理",
+  ldap: "LDAP 配置",
+  system: "系统事件",
+};
+
 export function AuditLogView() {
   const [items, setItems] = useState<AuditLogItem[]>([]);
   const [query, setQuery] = useState("");
+  const [category, setCategory] = useState("");
   const [action, setAction] = useState("");
   const [result, setResult] = useState("");
   const [offset, setOffset] = useState(0);
   const [hasMore, setHasMore] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [expandedDetails, setExpandedDetails] = useState<Set<number>>(
+    () => new Set(),
+  );
   const limit = 50;
 
   const parameters = useMemo(() => {
     const value = new URLSearchParams({
       query,
+      category,
       action,
       result,
       limit: String(limit),
       offset: String(offset),
     });
     return value.toString();
-  }, [action, offset, query, result]);
+  }, [action, category, offset, query, result]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -905,7 +917,7 @@ export function AuditLogView() {
         <div>
           <span className="eyebrow">SECURITY AUDIT</span>
           <h1>审计日志</h1>
-          <p>追踪登录、用例写入、导出和系统配置变更，日志按时间倒序分页。</p>
+          <p>追踪登录、用例删除、导出和系统配置变更；用例内容变动在详情页独立留存。</p>
         </div>
         <button
           className="button button-quiet"
@@ -935,36 +947,51 @@ export function AuditLogView() {
                 setQuery(event.target.value);
                 setOffset(0);
               }}
-              placeholder="搜索操作者或资源 ID"
+              placeholder="搜索人员、资源、操作、IP 或事件详情"
             />
           </label>
-          <select
+          <CustomSelect
+            value={category}
+            ariaLabel="审计分类"
+            options={[
+              { value: "", label: "全部分类" },
+              ...Object.entries(auditCategoryLabels).map(
+                ([value, label]) => ({ value, label }),
+              ),
+            ]}
+            onChange={(value) => {
+              setCategory(value);
+              setOffset(0);
+            }}
+          />
+          <CustomSelect
             value={action}
-            aria-label="操作类型"
-            onChange={(event) => {
-              setAction(event.target.value);
+            ariaLabel="操作类型"
+            options={[
+              { value: "", label: "全部操作" },
+              ...Object.entries(actionLabels).map(([value, label]) => ({
+                value,
+                label,
+              })),
+            ]}
+            onChange={(value) => {
+              setAction(value);
               setOffset(0);
             }}
-          >
-            <option value="">全部操作</option>
-            {Object.entries(actionLabels).map(([value, label]) => (
-              <option key={value} value={value}>
-                {label}
-              </option>
-            ))}
-          </select>
-          <select
+          />
+          <CustomSelect
             value={result}
-            aria-label="操作结果"
-            onChange={(event) => {
-              setResult(event.target.value);
+            ariaLabel="操作结果"
+            options={[
+              { value: "", label: "全部结果" },
+              { value: "success", label: "成功" },
+              { value: "failure", label: "失败" },
+            ]}
+            onChange={(value) => {
+              setResult(value);
               setOffset(0);
             }}
-          >
-            <option value="">全部结果</option>
-            <option value="success">成功</option>
-            <option value="failure">失败</option>
-          </select>
+          />
         </div>
 
         <div className="admin-table audit-table">
@@ -991,7 +1018,9 @@ export function AuditLogView() {
                 </span>
                 <span>
                   <strong>{actionLabels[item.action] ?? item.action}</strong>
-                  <small>{item.action}</small>
+                  <small>
+                    {auditCategoryLabels[item.category]} · {item.action}
+                  </small>
                 </span>
                 <span className="audit-resource">
                   <strong>{item.resourceType}</strong>
@@ -1009,10 +1038,29 @@ export function AuditLogView() {
                   </em>
                 </span>
                 {Object.keys(item.detail).length > 0 && (
-                  <details>
-                    <summary>查看事件详情</summary>
-                    <pre>{JSON.stringify(item.detail, null, 2)}</pre>
-                  </details>
+                  <div className="audit-detail">
+                    <button
+                      className="audit-detail-toggle"
+                      type="button"
+                      aria-expanded={expandedDetails.has(item.id)}
+                      onClick={() =>
+                        setExpandedDetails((current) => {
+                          const next = new Set(current);
+                          if (next.has(item.id)) next.delete(item.id);
+                          else next.add(item.id);
+                          return next;
+                        })
+                      }
+                    >
+                      {expandedDetails.has(item.id)
+                        ? "收起事件详情"
+                        : "查看事件详情"}
+                      <ChevronRight size={12} />
+                    </button>
+                    {expandedDetails.has(item.id) && (
+                      <pre>{JSON.stringify(item.detail, null, 2)}</pre>
+                    )}
+                  </div>
                 )}
               </div>
             ))

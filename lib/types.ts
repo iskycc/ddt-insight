@@ -2,6 +2,29 @@ export type CellValue = string | number | boolean | null;
 
 export type CaseData = Record<string, CellValue>;
 
+export type CaseHistoryKind = "edit" | "import_overwrite";
+
+export interface CaseHistoryChange {
+  column: string;
+  beforeExists: boolean;
+  afterExists: boolean;
+  before: CellValue;
+  after: CellValue;
+}
+
+export interface CaseHistoryItem {
+  id: number;
+  caseId: string;
+  changeType: CaseHistoryKind;
+  actorUserId: string;
+  actorUsername: string;
+  actorDisplayName: string;
+  actorProvider: UserProvider;
+  sourceName: string;
+  changes: CaseHistoryChange[];
+  createdAt: string;
+}
+
 export interface CaseListItem {
   caseId: string;
   srNum: string;
@@ -73,10 +96,13 @@ export interface LdapConfigPublic {
   updatedBy: string;
 }
 
+export type AuditCategory = "auth" | "case" | "user" | "ldap" | "system";
+
 export interface AuditLogItem {
   id: number;
   actorUsername: string;
   actorProvider: string;
+  category: AuditCategory;
   action: string;
   resourceType: string;
   resourceId: string;

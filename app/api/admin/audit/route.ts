@@ -14,6 +14,7 @@ export async function GET(request: NextRequest) {
   const offset = Number(parameters.get("offset") ?? 0);
   const result = listAuditLogs({
     query: parameters.get("query") ?? "",
+    category: parameters.get("category") ?? "",
     action: parameters.get("action") ?? "",
     result: parameters.get("result") ?? "",
     limit: Number.isFinite(limit) ? limit : 50,

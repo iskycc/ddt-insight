@@ -17,10 +17,12 @@ import {
   ExternalLink,
   File,
   FileArchive,
+  FileClock,
   FileSpreadsheet,
   Gauge,
   LayoutGrid,
   ListFilter,
+  LoaderCircle,
   LogOut,
   Menu,
   MoveHorizontal,
@@ -37,7 +39,9 @@ import {
   ScrollText,
   ScanLine,
   Sparkles,
+  Trash2,
   UploadCloud,
+  UserRound,
   Users,
   X,
   Zap,
@@ -60,8 +64,10 @@ import {
   LdapSettings,
   UserManagement,
 } from "@/components/admin-console";
+import { CustomSelect } from "@/components/custom-controls";
 import type {
   CaseData,
+  CaseHistoryItem,
   CaseListItem,
   DashboardStats,
   ImportResult,
@@ -141,6 +147,7 @@ export function WorkspaceClient({
   const [hasMore, setHasMore] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [stats, setStats] = useState<DashboardStats | null>(null);
+  const [historyRevision, setHistoryRevision] = useState(0);
   const [toast, setToast] = useState("");
   const requestSequence = useRef(0);
 
@@ -281,6 +288,7 @@ export function WorkspaceClient({
   const refreshAfterImport = useCallback(async () => {
     await Promise.all([loadGroups(), loadStats()]);
     await loadCases(true);
+    setHistoryRevision((current) => current + 1);
   }, [loadCases, loadGroups, loadStats]);
 
   async function logout() {
@@ -479,6 +487,7 @@ export function WorkspaceClient({
             caseLoading={caseLoading}
             hasMore={hasMore}
             sidebarHidden={sidebarHidden}
+            historyRevision={historyRevision}
             onQueryChange={setQuery}
             onGroupChange={setSelectedGroup}
             onCaseSelect={setSelectedCaseId}
@@ -504,6 +513,21 @@ export function WorkspaceClient({
               if (nextCaseId !== selectedCaseId) {
                 setSelectedCaseId(nextCaseId);
               }
+              setHistoryRevision((current) => current + 1);
+            }}
+            onCaseDeleted={async (caseId) => {
+              setCases((current) =>
+                current.filter(
+                  (item) =>
+                    item.caseId.toLocaleLowerCase("en-US") !==
+                    caseId.toLocaleLowerCase("en-US"),
+                ),
+              );
+              setSelectedCase(null);
+              setSelectedCaseId("");
+              setHistoryRevision((current) => current + 1);
+              await Promise.all([loadGroups(), loadStats()]);
+              await loadCases(true);
             }}
             onToast={setToast}
           />
@@ -555,12 +579,14 @@ function CaseManager({
   caseLoading,
   hasMore,
   sidebarHidden,
+  historyRevision,
   onQueryChange,
   onGroupChange,
   onCaseSelect,
   onLoadMore,
   onImport,
   onCaseUpdate,
+  onCaseDeleted,
   onToast,
 }: {
   cases: CaseListItem[];
@@ -573,12 +599,14 @@ function CaseManager({
   caseLoading: boolean;
   hasMore: boolean;
   sidebarHidden: boolean;
+  historyRevision: number;
   onQueryChange: (value: string) => void;
   onGroupChange: (value: string) => void;
   onCaseSelect: (value: string) => void;
   onLoadMore: () => void;
   onImport: () => void;
   onCaseUpdate: (value: CaseData) => void;
+  onCaseDeleted: (caseId: string) => Promise<void>;
   onToast: (message: string) => void;
 }) {
   const currentIndex = cases.findIndex((item) => item.caseId === selectedCaseId);
@@ -588,6 +616,8 @@ function CaseManager({
   const widthRef = useRef(0);
   const [caseListWidth, setCaseListWidth] = useState<number | null>(null);
   const [resizing, setResizing] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   const defaultCaseListWidth = useCallback(() => {
     const value = Number.parseFloat(
@@ -717,6 +747,32 @@ function CaseManager({
     if (next) onCaseSelect(next.caseId);
   }
 
+  async function removeSelectedCase() {
+    if (!selectedCaseId || deleting) return;
+    setDeleting(true);
+
+    try {
+      const response = await fetch(
+        `/api/cases/${encodeURIComponent(selectedCaseId)}`,
+        { method: "DELETE" },
+      );
+      const body = (await response.json()) as {
+        error?: string;
+        caseId?: string;
+      };
+      if (!response.ok) throw new Error(body.error ?? "删除用例失败");
+
+      const deletedCaseId = body.caseId ?? selectedCaseId;
+      setDeleteOpen(false);
+      await onCaseDeleted(deletedCaseId);
+      onToast(`已删除用例“${deletedCaseId}”`);
+    } catch (error) {
+      onToast(error instanceof Error ? error.message : "删除用例失败");
+    } finally {
+      setDeleting(false);
+    }
+  }
+
   return (
     <div
       className="case-workspace"
@@ -796,21 +852,21 @@ function CaseManager({
           )}
         </label>
 
-        <label className="group-filter">
+        <div className="group-filter">
           <ListFilter size={15} />
-          <select
+          <CustomSelect
             value={selectedGroup}
-            onChange={(event) => onGroupChange(event.target.value)}
-          >
-            <option value="">全部 srNum 分组</option>
-            {groups.map((group) => (
-              <option key={group.srNum} value={group.srNum}>
-                {group.srNum} · {group.count}
-              </option>
-            ))}
-          </select>
-          <ChevronDown size={14} />
-        </label>
+            ariaLabel="选择 srNum 分组"
+            onChange={onGroupChange}
+            options={[
+              { value: "", label: "全部 srNum 分组" },
+              ...groups.map((group) => ({
+                value: group.srNum,
+                label: `${group.srNum} · ${group.count}`,
+              })),
+            ]}
+          />
+        </div>
 
         <div className="case-list">
           {casesLoading ? (
@@ -945,6 +1001,14 @@ function CaseManager({
                   <ChevronRight size={16} />
                 </button>
                 <span className="toolbar-divider" />
+                <button
+                  className="button button-danger button-small"
+                  type="button"
+                  onClick={() => setDeleteOpen(true)}
+                >
+                  <Trash2 size={15} />
+                  删除
+                </button>
                 <a
                   className="button button-dark button-small"
                   href={`/api/export?caseId=${encodeURIComponent(selectedCaseId)}`}
@@ -1025,6 +1089,12 @@ function CaseManager({
                   />
                 ))}
               </div>
+
+              <CaseHistoryPanel
+                caseId={selectedCaseId}
+                revision={historyRevision}
+                onError={onToast}
+              />
             </div>
           </>
         ) : casesLoading || caseLoading ? (
@@ -1054,7 +1124,304 @@ function CaseManager({
           </div>
         )}
       </section>
+
+      {deleteOpen && (
+        <div
+          className="modal-backdrop"
+          onMouseDown={(event) => {
+            if (
+              !deleting &&
+              event.currentTarget === event.target
+            ) {
+              setDeleteOpen(false);
+            }
+          }}
+        >
+          <section
+            className="case-delete-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="case-delete-title"
+          >
+            <span className="case-delete-icon">
+              <Trash2 size={22} />
+            </span>
+            <h2 id="case-delete-title">删除这条用例？</h2>
+            <p>
+              用例 <strong>{selectedCaseId}</strong> 将从用例库中移除。
+              既有修改历史会永久保留，本次删除会写入安全审计日志。
+            </p>
+            <div>
+              <button
+                className="button button-quiet"
+                type="button"
+                disabled={deleting}
+                onClick={() => setDeleteOpen(false)}
+              >
+                取消
+              </button>
+              <button
+                className="button button-danger"
+                type="button"
+                disabled={deleting}
+                onClick={() => void removeSelectedCase()}
+              >
+                {deleting ? (
+                  <LoaderCircle className="spin" size={16} />
+                ) : (
+                  <Trash2 size={16} />
+                )}
+                {deleting ? "正在删除" : "确认删除"}
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
     </div>
+  );
+}
+
+function historyValue(value: unknown, exists: boolean) {
+  if (!exists) return "（字段不存在）";
+  if (value === null) return "null";
+  if (value === "") return "（空字符串）";
+  if (typeof value === "boolean") return value ? "true" : "false";
+  return String(value);
+}
+
+function historyDate(value: string) {
+  return new Intl.DateTimeFormat("zh-CN", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  }).format(new Date(value));
+}
+
+function CaseHistoryPanel({
+  caseId,
+  revision,
+  onError,
+}: {
+  caseId: string;
+  revision: number;
+  onError: (message: string) => void;
+}) {
+  const [items, setItems] = useState<CaseHistoryItem[]>([]);
+  const [nextCursor, setNextCursor] = useState<number | null>(null);
+  const [hasMore, setHasMore] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [expanded, setExpanded] = useState<Set<number>>(() => new Set());
+  const requestId = useRef(0);
+
+  const loadPage = useCallback(
+    async (beforeId: number | null, replace: boolean) => {
+      const currentRequest = ++requestId.current;
+      setLoading(true);
+      const parameters = new URLSearchParams({ limit: "15" });
+      if (beforeId) parameters.set("beforeId", String(beforeId));
+
+      try {
+        const response = await fetch(
+          `/api/cases/${encodeURIComponent(caseId)}/history?${parameters}`,
+          { cache: "no-store" },
+        );
+        const body = (await response.json()) as {
+          items?: CaseHistoryItem[];
+          hasMore?: boolean;
+          nextCursor?: number | null;
+          error?: string;
+        };
+        if (!response.ok) {
+          throw new Error(body.error ?? "读取修改历史失败");
+        }
+        if (currentRequest !== requestId.current) return;
+
+        const nextItems = body.items ?? [];
+        setItems((current) =>
+          replace ? nextItems : [...current, ...nextItems],
+        );
+        setHasMore(Boolean(body.hasMore));
+        setNextCursor(body.nextCursor ?? null);
+      } catch (error) {
+        if (currentRequest === requestId.current) {
+          onError(
+            error instanceof Error ? error.message : "读取修改历史失败",
+          );
+        }
+      } finally {
+        if (currentRequest === requestId.current) setLoading(false);
+      }
+    },
+    [caseId, onError],
+  );
+
+  useEffect(() => {
+    setItems([]);
+    setNextCursor(null);
+    setHasMore(false);
+    setExpanded(new Set());
+    void loadPage(null, true);
+    return () => {
+      requestId.current += 1;
+    };
+  }, [caseId, loadPage, revision]);
+
+  return (
+    <section className="case-history-panel">
+      <div className="case-history-heading">
+        <div>
+          <span className="case-history-icon">
+            <FileClock size={18} />
+          </span>
+          <div>
+            <h3>修改历史</h3>
+            <p>独立于审计日志永久保存，按时间倒序分页加载</p>
+          </div>
+        </div>
+        <span>{items.length ? `已加载 ${items.length} 条` : "版本时间线"}</span>
+      </div>
+
+      {loading && !items.length ? (
+        <div className="case-history-state">
+          <LoaderCircle className="spin" size={19} />
+          正在读取历史…
+        </div>
+      ) : items.length ? (
+        <div className="case-history-timeline">
+          {items.map((item) => {
+            const visibleChanges = expanded.has(item.id)
+              ? item.changes
+              : item.changes.slice(0, 6);
+            const actor =
+              item.actorDisplayName || item.actorUsername || "未知用户";
+
+            return (
+              <article className="case-history-entry" key={item.id}>
+                <i className="case-history-dot" />
+                <div className="case-history-card">
+                  <div className="case-history-meta">
+                    <div>
+                      <strong>
+                        {item.changeType === "edit"
+                          ? "手工修改"
+                          : "导入覆盖"}
+                      </strong>
+                      <span>{item.changes.length} 个字段发生变动</span>
+                    </div>
+                    <time dateTime={item.createdAt}>
+                      {historyDate(item.createdAt)}
+                    </time>
+                  </div>
+
+                  <div className="case-history-actor">
+                    <span>
+                      <UserRound size={13} />
+                      {actor}
+                      {item.actorUsername &&
+                        item.actorUsername !== item.actorDisplayName && (
+                          <small>@{item.actorUsername}</small>
+                        )}
+                    </span>
+                    <span>
+                      {item.actorProvider === "ldap" ? "LDAP" : "本地账户"}
+                    </span>
+                    {item.sourceName && <span>{item.sourceName}</span>}
+                    <span title={item.caseId}>CaseID: {item.caseId}</span>
+                  </div>
+
+                  {visibleChanges.length ? (
+                    <div className="case-history-changes">
+                      {visibleChanges.map((change) => (
+                        <div
+                          className="case-history-change"
+                          key={change.column}
+                        >
+                          <strong>{change.column}</strong>
+                          <span
+                            className={!change.beforeExists ? "missing" : ""}
+                            title={historyValue(
+                              change.before,
+                              change.beforeExists,
+                            )}
+                          >
+                            {historyValue(
+                              change.before,
+                              change.beforeExists,
+                            )}
+                          </span>
+                          <ArrowRight size={13} />
+                          <span
+                            className={!change.afterExists ? "missing" : ""}
+                            title={historyValue(
+                              change.after,
+                              change.afterExists,
+                            )}
+                          >
+                            {historyValue(
+                              change.after,
+                              change.afterExists,
+                            )}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="case-history-no-change">
+                      本次覆盖的数据内容与上一版本一致。
+                    </p>
+                  )}
+
+                  {item.changes.length > 6 && (
+                    <button
+                      className="case-history-expand"
+                      type="button"
+                      aria-expanded={expanded.has(item.id)}
+                      onClick={() =>
+                        setExpanded((current) => {
+                          const next = new Set(current);
+                          if (next.has(item.id)) next.delete(item.id);
+                          else next.add(item.id);
+                          return next;
+                        })
+                      }
+                    >
+                      {expanded.has(item.id)
+                        ? "收起变动"
+                        : `展开其余 ${item.changes.length - 6} 项`}
+                      <ChevronDown size={13} />
+                    </button>
+                  )}
+                </div>
+              </article>
+            );
+          })}
+        </div>
+      ) : (
+        <div className="case-history-state">
+          <FileClock size={19} />
+          当前用例还没有修改或覆盖记录
+        </div>
+      )}
+
+      {hasMore && (
+        <button
+          className="button button-quiet case-history-more"
+          type="button"
+          disabled={loading || !nextCursor}
+          onClick={() => void loadPage(nextCursor, false)}
+        >
+          {loading ? (
+            <LoaderCircle className="spin" size={14} />
+          ) : (
+            <ChevronDown size={14} />
+          )}
+          加载更早记录
+        </button>
+      )}
+    </section>
   );
 }
 

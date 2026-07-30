@@ -1,5 +1,5 @@
 import * as XLSX from "xlsx";
-import type { CaseData, CellValue } from "@/lib/types";
+import type { AuthSession, CaseData, CellValue } from "@/lib/types";
 import { getCasesForExport, importCases } from "@/lib/repository";
 
 const SUPPORTED_EXTENSIONS = new Set([
@@ -30,6 +30,10 @@ function normalizeCell(value: unknown): CellValue {
 export function parseAndImportSpreadsheet(
   buffer: Buffer,
   fileName: string,
+  actor: Pick<
+    AuthSession,
+    "userId" | "username" | "displayName" | "provider"
+  >,
 ) {
   const startedAt = Date.now();
   const extension = extensionOf(fileName);
@@ -141,6 +145,7 @@ export function parseAndImportSpreadsheet(
     columns,
     rows,
     startedAt,
+    actor,
   });
 }
 

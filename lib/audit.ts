@@ -1,6 +1,10 @@
 import type { NextRequest } from "next/server";
 import { db } from "@/lib/db";
-import type { AuditLogItem, AuthSession } from "@/lib/types";
+import type {
+  AuditCategory,
+  AuditLogItem,
+  AuthSession,
+} from "@/lib/types";
 
 function requestAddress(request: NextRequest) {
   return (
@@ -10,9 +14,18 @@ function requestAddress(request: NextRequest) {
   ).slice(0, 128);
 }
 
+function auditCategoryForAction(action: string): AuditCategory {
+  if (action.startsWith("auth.")) return "auth";
+  if (action.startsWith("case.")) return "case";
+  if (action.startsWith("user.")) return "user";
+  if (action.startsWith("ldap.")) return "ldap";
+  return "system";
+}
+
 export function writeAudit(input: {
   actorUsername: string;
   actorProvider?: string;
+  category?: AuditCategory;
   action: string;
   resourceType: string;
   resourceId?: string;
@@ -23,12 +36,13 @@ export function writeAudit(input: {
 }) {
   db.prepare(`
     INSERT INTO audit_logs (
-      actor_username, actor_provider, action, resource_type, resource_id,
+      actor_username, actor_provider, category, action, resource_type, resource_id,
       result, ip_address, user_agent, detail_json, created_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     input.actorUsername.slice(0, 128),
     (input.actorProvider ?? "").slice(0, 32),
+    input.category ?? auditCategoryForAction(input.action),
     input.action.slice(0, 64),
     input.resourceType.slice(0, 64),
     (input.resourceId ?? "").slice(0, 512),
@@ -46,6 +60,7 @@ export function auditRequest(
   input: {
     actorUsername?: string;
     actorProvider?: string;
+    category?: AuditCategory;
     action: string;
     resourceType: string;
     resourceId?: string;
@@ -64,12 +79,14 @@ export function auditRequest(
 
 export function listAuditLogs(options: {
   query?: string;
+  category?: string;
   action?: string;
   result?: string;
   limit?: number;
   offset?: number;
 }) {
   const query = options.query?.trim() ?? "";
+  const category = options.category?.trim() ?? "";
   const action = options.action?.trim() ?? "";
   const result = options.result?.trim() ?? "";
   const limit = Math.min(Math.max(options.limit ?? 50, 1), 200);
@@ -79,10 +96,26 @@ export function listAuditLogs(options: {
 
   if (query) {
     where.push(
-      "(actor_username LIKE ? ESCAPE '\\' OR resource_id LIKE ? ESCAPE '\\')",
+      `(actor_username LIKE ? ESCAPE '\\'
+        OR resource_id LIKE ? ESCAPE '\\'
+        OR resource_type LIKE ? ESCAPE '\\'
+        OR action LIKE ? ESCAPE '\\'
+        OR ip_address LIKE ? ESCAPE '\\'
+        OR detail_json LIKE ? ESCAPE '\\')`,
     );
     const escaped = query.replace(/[\\%_]/g, "\\$&");
-    parameters.push(`%${escaped}%`, `%${escaped}%`);
+    parameters.push(
+      `%${escaped}%`,
+      `%${escaped}%`,
+      `%${escaped}%`,
+      `%${escaped}%`,
+      `%${escaped}%`,
+      `%${escaped}%`,
+    );
+  }
+  if (["auth", "case", "user", "ldap", "system"].includes(category)) {
+    where.push("category = ?");
+    parameters.push(category);
   }
   if (action) {
     where.push("action = ?");
@@ -97,7 +130,7 @@ export function listAuditLogs(options: {
   const rows = db
     .prepare(`
       SELECT id, actor_username AS actorUsername,
-             actor_provider AS actorProvider, action,
+             actor_provider AS actorProvider, category, action,
              resource_type AS resourceType, resource_id AS resourceId,
              result, ip_address AS ipAddress, user_agent AS userAgent,
              detail_json AS detailJson, created_at AS createdAt

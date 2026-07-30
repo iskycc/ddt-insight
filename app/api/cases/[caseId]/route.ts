@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auditRequest } from "@/lib/audit";
+import { db } from "@/lib/db";
 import { errorResponse, requireApiSession } from "@/lib/http";
-import { getCase, updateCaseColumn } from "@/lib/repository";
+import { deleteCase, getCase, updateCaseColumn } from "@/lib/repository";
 
 export const dynamic = "force-dynamic";
 
@@ -69,32 +70,74 @@ export async function PATCH(
   }
 
   try {
-    const updated = updateCaseColumn(caseId, column, body.value ?? null);
+    const updated = updateCaseColumn(
+      caseId,
+      column,
+      body.value ?? null,
+      session,
+    );
     if (!updated) return errorResponse("未找到该 CaseID", 404);
-    auditRequest(request, session, {
-      action: "case.update",
-      resourceType: "case",
-      resourceId: caseId,
-      detail: {
-        column,
-        nextCaseId:
-          column === "CaseID" ? String(body.value ?? "") : undefined,
-      },
-    });
     return NextResponse.json(updated);
   } catch (error) {
+    return errorResponse(
+      error instanceof Error ? error.message : "修改用例失败",
+    );
+  }
+}
+
+export async function DELETE(
+  request: NextRequest,
+  context: { params: Promise<{ caseId: string }> },
+) {
+  const session = await requireApiSession();
+  if (!session) {
+    return errorResponse("请先登录", 401);
+  }
+
+  const { caseId } = await context.params;
+
+  try {
+    const deleted = db.transaction(() => {
+      const current = deleteCase(caseId);
+      if (current) {
+        auditRequest(request, session, {
+          action: "case.delete",
+          resourceType: "case",
+          resourceId: current.caseId,
+          detail: {
+            srNum: current.srNum,
+            sourceName: current.sourceName,
+          },
+        });
+      }
+      return current;
+    })();
+
+    if (!deleted) {
+      auditRequest(request, session, {
+        action: "case.delete",
+        resourceType: "case",
+        resourceId: caseId,
+        result: "failure",
+        detail: { reason: "not_found" },
+      });
+      return errorResponse("未找到该 CaseID", 404);
+    }
+
+    return NextResponse.json({ success: true, caseId: deleted.caseId });
+  } catch (error) {
     auditRequest(request, session, {
-      action: "case.update",
+      action: "case.delete",
       resourceType: "case",
       resourceId: caseId,
       result: "failure",
       detail: {
-        column,
         reason: error instanceof Error ? error.message : "unknown",
       },
     });
     return errorResponse(
-      error instanceof Error ? error.message : "修改用例失败",
+      error instanceof Error ? error.message : "删除用例失败",
+      500,
     );
   }
 }
