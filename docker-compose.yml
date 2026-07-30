@@ -1,0 +1,32 @@
+version: "3.3"
+
+services:
+  ddt-insight:
+    image: iskycc/ddt-insight:latest
+    container_name: ddt-insight
+    restart: unless-stopped
+    ports:
+      - "${DDT_PORT:-3000}:3000"
+    environment:
+      NODE_ENV: production
+      HOSTNAME: 0.0.0.0
+      PORT: 3000
+      DDT_DATA_DIR: /app/data
+      ADMIN_USERNAME: "${ADMIN_USERNAME:-admin}"
+      ADMIN_PASSWORD: "${ADMIN_PASSWORD:-insight-admin}"
+      COOKIE_SECURE: "${COOKIE_SECURE:-false}"
+      MAX_IMPORT_MB: "${MAX_IMPORT_MB:-200}"
+    volumes:
+      - ./data:/app/data
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:3000/api/health').then((response)=>process.exit(response.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    stop_grace_period: 20s
