@@ -23,6 +23,7 @@ DDT Insight 是完全离线运行的 Next.js 全栈用例数据管理平台：
 8. Docker 数据必须持久化到 `/app/data`。
 9. `docker-compose.yml` 必须保持 Compose V1 可解析；不要加入只在新版 Compose Spec 中存在的字段。
 10. Release 工作流只允许构建、导出镜像并上传 GitHub Release；不得添加镜像仓库登录或 `docker push`。
+11. Release 工作流必须同时保留 `linux/amd64` 和 `linux/arm64` 两种离线 Docker 镜像产物。
 
 ## 关键目录
 

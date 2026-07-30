@@ -173,10 +173,10 @@ Docker 镜像包含 Next.js 服务和全部运行依赖，但不包含数据库�
 
 `.github/workflows/release-image.yml` 用于生成可离线传输的 Docker 镜像包。工作流只执行以下操作：
 
-1. 构建 `linux/amd64` Docker 镜像。
-2. 将镜像导出为 `ddt-insight-<版本>-linux-amd64.tar.gz`。
-3. 生成对应的 `.sha256` 校验文件。
-4. 将两个文件上传到对应版本的 GitHub Release。
+1. 使用 GitHub 原生 x86-64 与 ARM64 Runner，并行构建 `linux/amd64` 和 `linux/arm64` Docker 镜像。
+2. 分别导出为 `ddt-insight-<版本>-linux-amd64.tar.gz` 和 `ddt-insight-<版本>-linux-arm64.tar.gz`。
+3. 为两个镜像包分别生成 `.sha256` 校验文件。
+4. 将四个文件上传到对应版本的 GitHub Release。
 
 工作流不会登录 Docker Hub，也不会执行 `docker push`。可以通过推送 `v*` 标签触发：
 
@@ -185,12 +185,19 @@ git tag v1.0.2
 git push origin v1.0.2
 ```
 
-也可以在 GitHub Actions 页面手动运行，并输入 `1.0.2` 或 `v1.0.2`。下载 Release 中的镜像包后，可在离线机器执行：
+也可以在 GitHub Actions 页面手动运行，并输入 `1.0.2` 或 `v1.0.2`。下载与目标机器 CPU 架构匹配的镜像包后，可在离线机器执行：
 
 ```bash
+# x86-64 机器
 sha256sum -c ddt-insight-1.0.2-linux-amd64.tar.gz.sha256
 gzip -dc ddt-insight-1.0.2-linux-amd64.tar.gz | docker load
+
+# ARM64 / AArch64 机器
+sha256sum -c ddt-insight-1.0.2-linux-arm64.tar.gz.sha256
+gzip -dc ddt-insight-1.0.2-linux-arm64.tar.gz | docker load
 ```
+
+两个离线包加载后都提供 `iskycc/ddt-insight:<版本>` 和 `iskycc/ddt-insight:latest` 标签。ARM 构建目标为当前服务器和开发板常用的 64 位 `arm64`，不包含 32 位 `arm/v7`。
 
 ## 数据与性能
 
