@@ -68,7 +68,10 @@ import {
   ImportCenter,
   ImportSourceTracker,
 } from "@/components/import-center";
-import { CaseManagementTools } from "@/components/case-management-tools";
+import {
+  BulkCaseActions,
+  CaseManagementTools,
+} from "@/components/case-management-tools";
 import { MaintenanceCenter } from "@/components/maintenance-center";
 import type {
   CaseData,
@@ -109,6 +112,10 @@ function formatValue(value: unknown) {
   return String(value);
 }
 
+function formatReviewValue(value: unknown) {
+  return formatValue(value) || "（空值）";
+}
+
 async function copyText(value: string) {
   if (navigator.clipboard?.writeText) {
     await navigator.clipboard.writeText(value);
@@ -140,7 +147,7 @@ function timeAgo(value: string) {
 
 const viewLabels: Record<WorkspaceView, string> = {
   cases: "用例管理",
-  caseTools: "用例工具",
+  caseTools: "检索与模板",
   overview: "数据概览",
   api: "开放 API",
   users: "用户管理",
@@ -413,8 +420,7 @@ export function WorkspaceClient({
             onClick={() => selectView("caseTools")}
           >
             <ListChecks size={18} />
-            批量与检索
-            {selectedCaseIds.length > 0 && <em>{selectedCaseIds.length}</em>}
+            检索与模板
           </button>
           <button
             className={classNames(view === "overview" && "active")}
@@ -654,21 +660,30 @@ export function WorkspaceClient({
               await Promise.all([loadGroups(), loadStats()]);
               await loadCases(true);
             }}
+            onBulkCasesChanged={async () => {
+              setHistoryRevision((current) => current + 1);
+              await Promise.all([loadGroups(), loadStats()]);
+              await loadCases(true);
+              if (selectedCaseId) {
+                const response = await fetch(
+                  `/api/case?caseId=${encodeURIComponent(selectedCaseId)}`,
+                  { cache: "no-store" },
+                );
+                if (response.ok) {
+                  setSelectedCase((await response.json()) as CaseData);
+                } else {
+                  setSelectedCase(null);
+                }
+              }
+            }}
+            onBulkSelectionCleared={() => setSelectedCaseIds([])}
             onToast={setToast}
           />
         )}
 
         {view === "caseTools" && (
           <CaseManagementTools
-            selectedCaseIds={selectedCaseIds}
             initialSrNum={selectedGroup}
-            onSelectionCleared={() => setSelectedCaseIds([])}
-            onCasesChanged={async () => {
-              setSelectedCase(null);
-              setHistoryRevision((current) => current + 1);
-              await Promise.all([loadGroups(), loadStats()]);
-              await loadCases(true);
-            }}
             onOpenCase={(caseId) => {
               setSelectedGroup("");
               setQuery(caseId);
@@ -749,6 +764,8 @@ function CaseManager({
   onImport,
   onCaseUpdate,
   onCaseDeleted,
+  onBulkCasesChanged,
+  onBulkSelectionCleared,
   onToast,
 }: {
   cases: CaseListItem[];
@@ -772,6 +789,12 @@ function CaseManager({
   onImport: () => void;
   onCaseUpdate: (value: CaseData) => void;
   onCaseDeleted: (caseId: string) => Promise<void>;
+  onBulkCasesChanged: (result: {
+    changed?: number;
+    deleted?: number;
+    missing?: string[];
+  }) => Promise<void>;
+  onBulkSelectionCleared: () => void;
   onToast: (message: string) => void;
 }) {
   const currentIndex = cases.findIndex((item) => item.caseId === selectedCaseId);
@@ -1276,7 +1299,48 @@ function CaseManager({
       </section>
 
       <section className="case-detail-panel">
-        {selectedCase && currentItem ? (
+        {selectedCaseIds.length > 0 ? (
+          <>
+            <div className="detail-toolbar case-bulk-toolbar">
+              <div className="case-breadcrumb">
+                <span>用例管理</span>
+                <ChevronRight size={13} />
+                <strong>
+                  已选择 {countFormatter.format(selectedCaseIds.length)} 条
+                </strong>
+              </div>
+              <button
+                className="button button-quiet button-small"
+                type="button"
+                onClick={onBulkSelectionCleared}
+              >
+                <X size={15} />
+                清空选择
+              </button>
+            </div>
+            <div className="case-detail-scroll case-bulk-scroll">
+              <div className="case-bulk-context">
+                <span className="case-bulk-icon">
+                  <ListChecks size={21} />
+                </span>
+                <div>
+                  <span className="eyebrow">SELECTION MODE</span>
+                  <h2>直接管理所选用例</h2>
+                  <p>
+                    当前选择保留在左侧列表中，无需切换页面即可修改、导出或移入回收站。
+                  </p>
+                </div>
+              </div>
+              <div className="case-bulk-actions">
+                <BulkCaseActions
+                  selectedCaseIds={selectedCaseIds}
+                  onCasesChanged={onBulkCasesChanged}
+                  onSelectionCleared={onBulkSelectionCleared}
+                />
+              </div>
+            </div>
+          </>
+        ) : selectedCase && currentItem ? (
           <>
             <div className="detail-toolbar">
               <div className="case-breadcrumb">
@@ -1846,17 +1910,47 @@ function EditableField({
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(formatValue(value));
   const [saving, setSaving] = useState(false);
+  const [confirming, setConfirming] = useState(false);
+  const confirmButtonRef = useRef<HTMLButtonElement>(null);
   const multiline = formatValue(value).length > 90 || /step|desc|expected/i.test(column);
 
   useEffect(() => {
     setDraft(formatValue(value));
   }, [value]);
 
-  async function save() {
+  useEffect(() => {
+    if (!confirming) return;
+
+    const previousFocus = document.activeElement as HTMLElement | null;
+    document.body.classList.add("modal-open");
+    const focusTimer = window.setTimeout(() => {
+      confirmButtonRef.current?.focus();
+    }, 0);
+
+    function handleDialogKeyDown(event: globalThis.KeyboardEvent) {
+      if (event.key === "Escape" && !saving) {
+        setConfirming(false);
+      }
+    }
+
+    window.addEventListener("keydown", handleDialogKeyDown);
+    return () => {
+      window.clearTimeout(focusTimer);
+      window.removeEventListener("keydown", handleDialogKeyDown);
+      document.body.classList.remove("modal-open");
+      previousFocus?.focus();
+    };
+  }, [confirming, saving]);
+
+  function reviewChange() {
     if (draft === formatValue(value)) {
       setEditing(false);
       return;
     }
+    setConfirming(true);
+  }
+
+  async function save() {
     setSaving(true);
 
     try {
@@ -1871,6 +1965,7 @@ function EditableField({
       const body = (await response.json()) as CaseData & { error?: string };
       if (!response.ok) throw new Error(body.error ?? "保存失败");
       onUpdated(body);
+      setConfirming(false);
       setEditing(false);
     } catch (error) {
       onError(error instanceof Error ? error.message : "保存失败");
@@ -1880,7 +1975,10 @@ function EditableField({
   }
 
   function handleKeyDown(event: KeyboardEvent<HTMLInputElement>) {
-    if (event.key === "Enter") void save();
+    if (event.key === "Enter") {
+      event.preventDefault();
+      reviewChange();
+    }
     if (event.key === "Escape") {
       setDraft(formatValue(value));
       setEditing(false);
@@ -1932,10 +2030,10 @@ function EditableField({
               className="button button-primary button-small"
               type="button"
               disabled={saving}
-              onClick={() => void save()}
+              onClick={reviewChange}
             >
               <Save size={14} />
-              {saving ? "保存中" : "保存"}
+              审阅修改
             </button>
           </div>
         </div>
@@ -1969,6 +2067,80 @@ function EditableField({
             <Pencil size={14} />
             编辑
           </button>
+        </div>
+      )}
+
+      {confirming && (
+        <div
+          className="modal-backdrop"
+          onMouseDown={(event) => {
+            if (!saving && event.currentTarget === event.target) {
+              setConfirming(false);
+            }
+          }}
+        >
+          <section
+            className="case-update-dialog"
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="case-update-title"
+            aria-describedby="case-update-description"
+          >
+            <span className="case-update-icon">
+              <Pencil size={21} />
+            </span>
+            <h2 id="case-update-title">确认提交这次修改？</h2>
+            <p id="case-update-description">
+              请再次核对修改前后的内容。确认后将立即更新用例，并永久记录修改人和变动详情。
+            </p>
+
+            <dl className="case-update-meta">
+              <div>
+                <dt>CaseID</dt>
+                <dd>{caseId}</dd>
+              </div>
+              <div>
+                <dt>修改字段</dt>
+                <dd>{column}</dd>
+              </div>
+            </dl>
+
+            <div className="case-update-comparison">
+              <div>
+                <span>修改前</span>
+                <p>{formatReviewValue(value)}</p>
+              </div>
+              <div>
+                <span>修改后</span>
+                <p>{formatReviewValue(draft)}</p>
+              </div>
+            </div>
+
+            <div className="case-update-actions">
+              <button
+                className="button button-quiet"
+                type="button"
+                disabled={saving}
+                onClick={() => setConfirming(false)}
+              >
+                返回修改
+              </button>
+              <button
+                ref={confirmButtonRef}
+                className="button button-primary"
+                type="button"
+                disabled={saving}
+                onClick={() => void save()}
+              >
+                {saving ? (
+                  <LoaderCircle className="spin" size={16} />
+                ) : (
+                  <Save size={16} />
+                )}
+                {saving ? "正在提交" : "确认提交"}
+              </button>
+            </div>
+          </section>
         </div>
       )}
     </article>

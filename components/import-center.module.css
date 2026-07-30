@@ -4,7 +4,7 @@
   inset: 0;
   display: grid;
   place-items: center;
-  padding: 20px;
+  padding: 1.25rem;
   background: rgba(22, 27, 34, 0.38);
   backdrop-filter: blur(12px);
 }
@@ -18,8 +18,8 @@
 }
 
 .modal {
-  width: min(760px, 100%);
-  max-height: calc(100vh - 40px);
+  width: min(48rem, 100%);
+  max-height: calc(100dvh - 2.5rem);
   overflow: auto;
   border-radius: 22px;
 }
@@ -29,8 +29,8 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
-  padding: 20px 22px;
+  gap: 1rem;
+  padding: 1.25rem 1.375rem;
   border-bottom: 1px solid #e9ebee;
 }
 
@@ -85,7 +85,7 @@
 }
 
 .content {
-  padding: 20px 22px;
+  padding: 1.25rem 1.375rem;
 }
 
 .dropzone {
@@ -192,7 +192,7 @@
   color: #747a83;
   background: #f8f9fa;
   border-bottom: 1px solid #e9ebee;
-  font-size: 0.5625rem;
+  font-size: 0.625rem;
 }
 
 .sectionHeading strong {
@@ -226,7 +226,7 @@
   display: block;
   overflow: hidden;
   color: #33373c;
-  font-size: 0.625rem;
+  font-size: 0.6875rem;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -236,7 +236,8 @@
   display: block;
   margin-top: 4px;
   color: #90969d;
-  font-size: 0.5rem;
+  font-size: 0.5625rem;
+  line-height: 1.45;
 }
 
 .statusLine {
@@ -245,7 +246,7 @@
   gap: 8px;
   margin-bottom: 14px;
   color: #33383e;
-  font-size: 0.6875rem;
+  font-size: 0.75rem;
 }
 
 .statusLine code,
@@ -310,11 +311,11 @@
 .metrics span {
   margin-bottom: 6px;
   color: #8a9098;
-  font-size: 0.5rem;
+  font-size: 0.5625rem;
 }
 
 .metrics strong {
-  font-size: 1.05rem;
+  font-size: 1.125rem;
 }
 
 .metrics .added strong {
@@ -329,7 +330,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
+  gap: 1rem;
   margin-top: 15px;
   padding: 13px;
   border: 1px solid #dce8f3;
@@ -337,8 +338,9 @@
   background: #f7fbff;
 }
 
-.strategy > div {
+.strategyCopy {
   min-width: 0;
+  flex: 1;
 }
 
 .strategy strong,
@@ -348,16 +350,54 @@
 
 .strategy strong {
   margin-bottom: 4px;
-  font-size: 0.625rem;
+  font-size: 0.6875rem;
 }
 
 .strategy span {
   color: #7c858f;
-  font-size: 0.5rem;
+  font-size: 0.5625rem;
+  line-height: 1.5;
 }
 
-.strategy :global(.custom-select) {
-  min-width: 170px;
+.strategySelect {
+  width: min(13rem, 42%);
+  flex: 0 0 auto;
+}
+
+.strategySelect :global(.custom-select-trigger) {
+  min-height: 2.375rem;
+  padding: 0 0.75rem;
+  border: 1px solid #d9e3ec;
+  border-radius: 0.625rem;
+  color: #354252;
+  background: #fff;
+  font-size: 0.625rem;
+  font-weight: 650;
+  line-height: 1;
+}
+
+.strategySelect :global(.custom-select-trigger:hover) {
+  border-color: #afcbe3;
+  background: #fbfdff;
+}
+
+.strategySelect :global(.custom-select-trigger:focus-visible),
+.strategySelect:global(.custom-select.open)
+  :global(.custom-select-trigger) {
+  border-color: #72afe9;
+  box-shadow: 0 0 0 3px rgba(26, 129, 225, 0.09);
+}
+
+.strategyMenu {
+  padding: 0.375rem;
+  border-radius: 0.75rem;
+}
+
+.strategyMenu > button {
+  min-height: 2.25rem;
+  padding: 0.5rem 0.625rem;
+  border-radius: 0.5rem;
+  font-size: 0.625rem;
 }
 
 .progressBlock {
@@ -453,7 +493,7 @@
   display: flex;
   align-items: center;
   gap: 9px;
-  padding: 14px 22px 18px;
+  padding: 0.875rem 1.375rem 1.125rem;
   border-top: 1px solid #eceef0;
 }
 
@@ -662,7 +702,7 @@
     flex-direction: column;
   }
 
-  .strategy :global(.custom-select) {
+  .strategySelect {
     width: 100%;
   }
 

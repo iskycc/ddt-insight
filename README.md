@@ -70,7 +70,7 @@ npm run dev
 | 永久修改历史 | 用例详情时间线与 `case_history` | 编辑、覆盖、批改和回滚均追加版本，CaseID 改名后历史链不断开 |
 | 历史回滚 | 详情时间线 | 回滚完整快照前检查 CaseID 冲突，并先保留当前版本 |
 | 用例删除 | 详情工具栏与回收站 | 删除需二次确认并写安全审计，可恢复或彻底删除，修改历史不被删除 |
-| 批量管理 | 工作台“批量与检索” | 多选后可事务批改、选择导出或批量移入回收站 |
+| 批量管理 | 工作台“用例管理” | 多选后在详情区直接事务批改、选择导出或批量移入回收站，无需切换页面 |
 | 高级检索 | `/api/cases/search` | CaseID 前缀使用索引，支持游标分页和动态字段组合条件 |
 | 字段模板 | `/api/templates` | 模板按 srNum 生效，导入和批量修改执行相同校验 |
 | 大数据按 CaseID 切换 | 分页列表与详情面板 | 前端每页最多读取 60 个索引项，只展示一个详情 |
@@ -194,7 +194,7 @@ Windows 可以运行 `start.cmd`。启动脚本会先检查 Node.js 主版本，
 
 ```text
 iskycc/ddt-insight:latest
-iskycc/ddt-insight:1.0.6
+iskycc/ddt-insight:1.0.7
 ```
 
 使用 Docker Compose：
@@ -253,20 +253,20 @@ Docker 镜像基于 Node.js 24 Alpine，包含 Next.js 服务和全部运行依�
 工作流不会登录 Docker Hub，也不会执行 `docker push`。可以通过推送 `v*` 标签触发：
 
 ```bash
-git tag v1.0.6
-git push origin v1.0.6
+git tag v1.0.7
+git push origin v1.0.7
 ```
 
-也可以在 GitHub Actions 页面手动运行，并输入 `1.0.6` 或 `v1.0.6`。下载与目标机器 CPU 架构匹配的镜像包后，可在离线机器执行：
+也可以在 GitHub Actions 页面手动运行，并输入 `1.0.7` 或 `v1.0.7`。下载与目标机器 CPU 架构匹配的镜像包后，可在离线机器执行：
 
 ```bash
 # x86-64 机器
-sha256sum -c ddt-insight-1.0.6-linux-amd64.tar.gz.sha256
-gzip -dc ddt-insight-1.0.6-linux-amd64.tar.gz | docker load
+sha256sum -c ddt-insight-1.0.7-linux-amd64.tar.gz.sha256
+gzip -dc ddt-insight-1.0.7-linux-amd64.tar.gz | docker load
 
 # ARM64 / AArch64 机器
-sha256sum -c ddt-insight-1.0.6-linux-arm64.tar.gz.sha256
-gzip -dc ddt-insight-1.0.6-linux-arm64.tar.gz | docker load
+sha256sum -c ddt-insight-1.0.7-linux-arm64.tar.gz.sha256
+gzip -dc ddt-insight-1.0.7-linux-arm64.tar.gz | docker load
 ```
 
 两个离线包加载后都提供 `iskycc/ddt-insight:<版本>` 和 `iskycc/ddt-insight:latest` 标签。ARM 构建目标为当前服务器和开发板常用的 64 位 `arm64`，不包含 32 位 `arm/v7`。

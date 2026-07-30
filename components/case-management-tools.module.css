@@ -11,7 +11,7 @@
 
 .tabs {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 4px;
   padding: 4px;
   border: 1px solid rgba(24, 38, 64, 0.09);
@@ -426,6 +426,42 @@
   color: #68768c;
   font-size: 0.5rem;
   line-height: 1.6;
+}
+
+.reviewSummary {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin: 0 0 18px;
+}
+
+.reviewSummary > div {
+  min-width: 0;
+  padding: 10px 11px;
+  border: 1px solid rgba(30, 48, 77, 0.1);
+  border-radius: 9px;
+  background: #f7f9fc;
+}
+
+.reviewSummary > div:nth-child(n + 3) {
+  grid-column: 1 / -1;
+}
+
+.reviewSummary dt {
+  margin-bottom: 4px;
+  color: #8a96a8;
+  font-size: 0.4375rem;
+  font-weight: 680;
+}
+
+.reviewSummary dd {
+  margin: 0;
+  overflow: hidden;
+  color: #27364c;
+  font-size: 0.5625rem;
+  font-weight: 650;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
 }
 
 .empty {

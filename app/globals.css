@@ -2521,6 +2521,62 @@ body.case-list-resizing .case-workspace {
   scrollbar-width: thin;
 }
 
+.case-bulk-toolbar > .button {
+  flex: 0 0 auto;
+}
+
+.case-bulk-scroll {
+  display: grid;
+  align-content: start;
+  gap: 1rem;
+}
+
+.case-bulk-context,
+.case-bulk-actions {
+  width: min(100%, 64rem);
+  margin-right: auto;
+  margin-left: auto;
+}
+
+.case-bulk-context {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 0.8125rem;
+  padding: 0.25rem 0;
+}
+
+.case-bulk-icon {
+  display: grid;
+  width: 2.875rem;
+  height: 2.875rem;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: 0.8125rem;
+  color: #147edf;
+  background: #e6f2ff;
+  box-shadow: inset 0 0 0 1px rgba(10, 115, 218, 0.05);
+}
+
+.case-bulk-context > div {
+  min-width: 0;
+}
+
+.case-bulk-context h2 {
+  margin: 0.1875rem 0;
+  color: #25282d;
+  font-size: 1.0625rem;
+  font-weight: 680;
+  letter-spacing: -0.025em;
+}
+
+.case-bulk-context p {
+  margin: 0;
+  color: #8c9097;
+  font-size: 0.5625rem;
+  line-height: 1.6;
+}
+
 .case-title-block {
   display: flex;
   align-items: center;
@@ -2987,6 +3043,128 @@ body.case-list-resizing .case-workspace {
   justify-content: flex-end;
   gap: 8px;
   margin-top: 23px;
+}
+
+.case-update-dialog {
+  width: min(36rem, calc(100% - 28px));
+  max-height: calc(100dvh - 48px);
+  padding: 1.75rem;
+  overflow-y: auto;
+  border: 1px solid rgba(255, 255, 255, 0.78);
+  border-radius: 1.125rem;
+  background: #fff;
+  box-shadow: var(--shadow-lg);
+  animation: modal-in 220ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+.case-update-icon {
+  display: flex;
+  width: 2.75rem;
+  height: 2.75rem;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.75rem;
+  color: #147ddb;
+  background: #eaf4ff;
+}
+
+.case-update-dialog h2 {
+  margin: 1.0625rem 0 0.5rem;
+  font-size: 1.125rem;
+  letter-spacing: -0.35px;
+}
+
+.case-update-dialog > p {
+  margin: 0;
+  color: #777b82;
+  font-size: 0.625rem;
+  line-height: 1.7;
+}
+
+.case-update-meta {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem;
+  margin: 1.25rem 0 0.625rem;
+}
+
+.case-update-meta > div {
+  min-width: 0;
+  padding: 0.6875rem 0.75rem;
+  border: 1px solid #e8eaed;
+  border-radius: 0.625rem;
+  background: #fafbfc;
+}
+
+.case-update-meta dt {
+  margin-bottom: 0.3125rem;
+  color: #989ca3;
+  font-size: 0.4375rem;
+  font-weight: 680;
+}
+
+.case-update-meta dd {
+  margin: 0;
+  overflow: hidden;
+  color: #3d4147;
+  font-size: 0.625rem;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.case-update-comparison {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.625rem;
+}
+
+.case-update-comparison > div {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid #e5e7ea;
+  border-radius: 0.6875rem;
+  background: #fbfcfd;
+}
+
+.case-update-comparison > div:last-child {
+  border-color: #cfe4f8;
+  background: #f6faff;
+}
+
+.case-update-comparison span {
+  display: block;
+  padding: 0.5625rem 0.6875rem 0.4375rem;
+  color: #90949b;
+  font-size: 0.4375rem;
+  font-weight: 700;
+}
+
+.case-update-comparison > div:last-child span {
+  color: #367ebd;
+}
+
+.case-update-comparison p {
+  max-height: 8rem;
+  margin: 0;
+  padding: 0 0.6875rem 0.6875rem;
+  overflow: auto;
+  color: #555960;
+  font-size: 0.625rem;
+  line-height: 1.65;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.case-update-comparison > div:last-child p {
+  color: #254f73;
+}
+
+.case-update-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: 1.4375rem;
 }
 
 .field-card {
@@ -5403,9 +5581,9 @@ body.case-list-resizing .case-workspace {
   }
 
   .detail-toolbar {
-    position: sticky;
+    position: relative;
     z-index: 5;
-    top: 54px;
+    top: auto;
     padding: 0 12px;
   }
 
@@ -5424,6 +5602,27 @@ body.case-list-resizing .case-workspace {
     height: auto;
     min-height: 500px;
     padding: 18px 14px;
+  }
+
+  .case-bulk-toolbar {
+    justify-content: space-between;
+  }
+
+  .case-bulk-toolbar .case-breadcrumb {
+    display: flex;
+  }
+
+  .case-bulk-toolbar .button {
+    min-width: 34px;
+    padding: 0 9px;
+  }
+
+  .case-bulk-scroll {
+    min-height: 500px;
+  }
+
+  .case-bulk-context {
+    align-items: flex-start;
   }
 
   .case-title-block {
@@ -5547,6 +5746,25 @@ body.case-list-resizing .case-workspace {
     width: calc(100% - 24px);
     margin-right: 12px;
     margin-left: 12px;
+  }
+
+  .case-update-dialog {
+    max-height: calc(100dvh - 20px);
+    padding: 1.25rem;
+    border-radius: 1rem;
+  }
+
+  .case-update-meta,
+  .case-update-comparison {
+    grid-template-columns: 1fr;
+  }
+
+  .case-update-comparison p {
+    max-height: 6rem;
+  }
+
+  .case-update-actions .button {
+    flex: 1;
   }
 
   .ldap-enable-row {

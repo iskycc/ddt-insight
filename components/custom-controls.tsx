@@ -36,6 +36,7 @@ export function CustomSelect({
   ariaLabel,
   disabled = false,
   className = "",
+  menuClassName = "",
 }: {
   value: string;
   options: CustomSelectOption[];
@@ -43,6 +44,7 @@ export function CustomSelect({
   ariaLabel: string;
   disabled?: boolean;
   className?: string;
+  menuClassName?: string;
 }) {
   const listboxId = useId();
   const rootRef = useRef<HTMLDivElement>(null);
@@ -262,7 +264,7 @@ export function CustomSelect({
           <div
             ref={menuRef}
             id={listboxId}
-            className="custom-select-menu"
+            className={`custom-select-menu ${menuClassName}`.trim()}
             role="listbox"
             aria-label={ariaLabel}
             style={menuStyle}

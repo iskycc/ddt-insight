@@ -86,6 +86,7 @@ export function UserManagement({
   const [error, setError] = useState("");
   const [createOpen, setCreateOpen] = useState(false);
   const [resetUser, setResetUser] = useState<UserRecord | null>(null);
+  const [deleteUser, setDeleteUser] = useState<UserRecord | null>(null);
   const [busyId, setBusyId] = useState("");
 
   const load = useCallback(async () => {
@@ -134,9 +135,6 @@ export function UserManagement({
   }
 
   async function remove(user: UserRecord) {
-    if (!window.confirm(`确定删除用户“${user.username}”吗？此操作不可撤销。`)) {
-      return;
-    }
     setBusyId(user.id);
     setError("");
     try {
@@ -145,6 +143,7 @@ export function UserManagement({
       });
       if (!response.ok) throw new Error(await responseError(response, "删除用户失败"));
       setUsers((current) => current.filter((item) => item.id !== user.id));
+      setDeleteUser(null);
       onToast(`已删除用户 ${user.username}`);
     } catch (removeError) {
       setError(
@@ -322,6 +321,7 @@ export function UserManagement({
                       className="icon-button"
                       type="button"
                       title="重置密码"
+                      aria-label={`重置 ${user.username} 的密码`}
                       disabled={busyId === user.id}
                       onClick={() => setResetUser(user)}
                     >
@@ -332,8 +332,9 @@ export function UserManagement({
                     className="icon-button danger"
                     type="button"
                     title="删除用户"
+                    aria-label={`删除用户 ${user.username}`}
                     disabled={busyId === user.id || user.id === currentUserId}
-                    onClick={() => void remove(user)}
+                    onClick={() => setDeleteUser(user)}
                   >
                     <Trash2 size={15} />
                   </button>
@@ -371,6 +372,60 @@ export function UserManagement({
             onToast(`已重置 ${user.username} 的密码`);
           }}
         />
+      )}
+
+      {deleteUser && (
+        <div
+          className="modal-backdrop"
+          onMouseDown={(event) => {
+            if (
+              !busyId &&
+              event.currentTarget === event.target
+            ) {
+              setDeleteUser(null);
+            }
+          }}
+        >
+          <section
+            className="case-delete-dialog"
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="user-delete-title"
+            aria-describedby="user-delete-description"
+          >
+            <span className="case-delete-icon">
+              <Trash2 size={22} />
+            </span>
+            <h2 id="user-delete-title">删除这个用户？</h2>
+            <p id="user-delete-description">
+              用户 <strong>{deleteUser.username}</strong> 将被永久删除，
+              其现有会话会立即失效。本次操作不可撤销，并会写入审计日志。
+            </p>
+            <div>
+              <button
+                className="button button-quiet"
+                type="button"
+                disabled={busyId === deleteUser.id}
+                onClick={() => setDeleteUser(null)}
+              >
+                取消
+              </button>
+              <button
+                className="button button-danger"
+                type="button"
+                disabled={busyId === deleteUser.id}
+                onClick={() => void remove(deleteUser)}
+              >
+                {busyId === deleteUser.id ? (
+                  <LoaderCircle className="spin" size={16} />
+                ) : (
+                  <Trash2 size={16} />
+                )}
+                {busyId === deleteUser.id ? "正在删除" : "确认删除"}
+              </button>
+            </div>
+          </section>
+        </div>
       )}
     </div>
   );

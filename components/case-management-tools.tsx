@@ -4,7 +4,6 @@ import {
   Download,
   FileSearch,
   LayoutTemplate,
-  ListChecks,
   LoaderCircle,
   Plus,
   RotateCcw,
@@ -17,6 +16,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import { CustomCheckbox, CustomSelect } from "@/components/custom-controls";
@@ -92,6 +92,13 @@ function valueFromInput(value: string, type: string): CellValue {
   return value;
 }
 
+function formatCellValue(value: CellValue) {
+  if (value === null) return "null（空值）";
+  if (value === "") return "（空字符串）";
+  if (typeof value === "boolean") return value ? "true" : "false";
+  return String(value);
+}
+
 export interface BulkCaseActionsProps {
   selectedCaseIds: string[];
   onCasesChanged?: (result: {
@@ -115,17 +122,61 @@ export function BulkCaseActions({
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [pendingUpdate, setPendingUpdate] = useState<{
+    field: string;
+    value: CellValue;
+  } | null>(null);
+  const updateConfirmButtonRef = useRef<HTMLButtonElement>(null);
   const disabled = !selectedCaseIds.length || Boolean(busy);
 
+  useEffect(() => {
+    if (!pendingUpdate) return;
+
+    const previousFocus = document.activeElement as HTMLElement | null;
+    document.body.classList.add("modal-open");
+    const focusTimer = window.setTimeout(() => {
+      updateConfirmButtonRef.current?.focus();
+    }, 0);
+
+    function handleKeyDown(event: globalThis.KeyboardEvent) {
+      if (event.key === "Escape" && !busy) {
+        setPendingUpdate(null);
+      }
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.clearTimeout(focusTimer);
+      window.removeEventListener("keydown", handleKeyDown);
+      document.body.classList.remove("modal-open");
+      previousFocus?.focus();
+    };
+  }, [pendingUpdate, busy]);
+
+  function reviewUpdate() {
+    setMessage("");
+    setError("");
+    try {
+      const targetField = field.trim();
+      if (!targetField) throw new Error("请输入目标字段");
+      setPendingUpdate({
+        field: targetField,
+        value: valueFromInput(
+          valueType === "boolean" ? booleanValue : value,
+          valueType,
+        ),
+      });
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "修改内容不正确");
+    }
+  }
+
   async function updateCases() {
+    if (!pendingUpdate) return;
     setBusy("update");
     setMessage("");
     setError("");
     try {
-      const nextValue = valueFromInput(
-        valueType === "boolean" ? booleanValue : value,
-        valueType,
-      );
       const result = await responseJson<{
         changed: number;
         skipped: number;
@@ -136,10 +187,11 @@ export function BulkCaseActions({
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             caseIds: selectedCaseIds,
-            changes: { [field.trim()]: nextValue },
+            changes: { [pendingUpdate.field]: pendingUpdate.value },
           }),
         }),
       );
+      setPendingUpdate(null);
       setMessage(
         `已更新 ${result.changed} 条，跳过 ${result.skipped} 条${
           result.missing.length ? `，${result.missing.length} 条已不存在` : ""
@@ -307,14 +359,78 @@ export function BulkCaseActions({
           className={styles.button}
           type="button"
           disabled={disabled || !field.trim()}
-          onClick={updateCases}
+          onClick={reviewUpdate}
         >
-          {busy === "update" ? <LoaderCircle size={16} /> : <Save size={16} />}
+          <Save size={16} />
           应用修改
         </button>
       </div>
       {message && <p className={styles.notice}>{message}</p>}
       {error && <p className={styles.error}>{error}</p>}
+
+      {pendingUpdate && (
+        <div className={styles.modalBackdrop} role="presentation">
+          <div
+            className={styles.modal}
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="bulk-update-title"
+            aria-describedby="bulk-update-description"
+          >
+            <h3 id="bulk-update-title">确认应用这次批量修改？</h3>
+            <p id="bulk-update-description">
+              请再次核对影响范围和目标值。确认后会逐条更新用例，并为每条用例永久记录修改历史。
+            </p>
+            <dl className={styles.reviewSummary}>
+              <div>
+                <dt>影响用例</dt>
+                <dd>{selectedCaseIds.length} 条</dd>
+              </div>
+              <div>
+                <dt>目标字段</dt>
+                <dd>{pendingUpdate.field}</dd>
+              </div>
+              <div>
+                <dt>写入值</dt>
+                <dd>{formatCellValue(pendingUpdate.value)}</dd>
+              </div>
+              <div>
+                <dt>CaseID 摘要</dt>
+                <dd>
+                  {selectedCaseIds.slice(0, 4).join("、")}
+                  {selectedCaseIds.length > 4
+                    ? ` 等 ${selectedCaseIds.length} 条`
+                    : ""}
+                </dd>
+              </div>
+            </dl>
+            <div className={styles.actions}>
+              <button
+                className={`${styles.button} ${styles.buttonSecondary}`}
+                type="button"
+                disabled={Boolean(busy)}
+                onClick={() => setPendingUpdate(null)}
+              >
+                返回检查
+              </button>
+              <button
+                ref={updateConfirmButtonRef}
+                className={styles.button}
+                type="button"
+                disabled={Boolean(busy)}
+                onClick={() => void updateCases()}
+              >
+                {busy === "update" ? (
+                  <LoaderCircle size={16} />
+                ) : (
+                  <Save size={16} />
+                )}
+                {busy === "update" ? "正在应用" : "确认应用"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {confirmDelete && (
         <div className={styles.modalBackdrop} role="presentation">
@@ -910,27 +1026,22 @@ export function CaseTemplateManager({
 }
 
 export interface CaseManagementToolsProps
-  extends BulkCaseActionsProps,
-    AdvancedCaseSearchProps,
+  extends AdvancedCaseSearchProps,
     CaseTemplateManagerProps {
-  initialTab?: "bulk" | "search" | "templates";
+  initialTab?: "search" | "templates";
 }
 
 export function CaseManagementTools({
-  selectedCaseIds,
-  onCasesChanged,
-  onSelectionCleared,
   onOpenCase,
   initialSrNum,
   onTemplatesChanged,
-  initialTab = "bulk",
+  initialTab = "search",
 }: CaseManagementToolsProps) {
   const [tab, setTab] = useState(initialTab);
   return (
     <div className={`${styles.shell} workspace-page`}>
       <nav className={styles.tabs} aria-label="用例管理工具">
         {[
-          { value: "bulk", label: "批量管理", icon: ListChecks },
           { value: "search", label: "高级检索", icon: Search },
           { value: "templates", label: "字段模板", icon: LayoutTemplate },
         ].map((item) => {
@@ -944,7 +1055,7 @@ export function CaseManagementTools({
               aria-current={tab === item.value ? "page" : undefined}
               key={item.value}
               onClick={() =>
-                setTab(item.value as "bulk" | "search" | "templates")
+                setTab(item.value as "search" | "templates")
               }
             >
               <Icon size={15} /> {item.label}
@@ -952,13 +1063,6 @@ export function CaseManagementTools({
           );
         })}
       </nav>
-      {tab === "bulk" && (
-        <BulkCaseActions
-          selectedCaseIds={selectedCaseIds}
-          onCasesChanged={onCasesChanged}
-          onSelectionCleared={onSelectionCleared}
-        />
-      )}
       {tab === "search" && <AdvancedCaseSearch onOpenCase={onOpenCase} />}
       {tab === "templates" && (
         <CaseTemplateManager

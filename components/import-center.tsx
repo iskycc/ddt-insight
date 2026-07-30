@@ -486,7 +486,7 @@ export function ImportCenter({
 
               {job.status === "previewed" && (
                 <div className={styles.strategy}>
-                  <div>
+                  <div className={styles.strategyCopy}>
                     <strong>冲突处理策略</strong>
                     <span>
                       {strategy === "overwrite"
@@ -503,6 +503,8 @@ export function ImportCenter({
                       setStrategy(value as ConflictStrategy)
                     }
                     ariaLabel="导入冲突处理策略"
+                    className={styles.strategySelect}
+                    menuClassName={styles.strategyMenu}
                   />
                 </div>
               )}
@@ -552,7 +554,7 @@ export function ImportCenter({
             </>
           )}
 
-          {(requestError || job?.errors.length) && (
+          {(Boolean(requestError) || Boolean(job?.errors.length)) && (
             <div className={styles.errors} role="alert">
               {requestError && <p>{requestError}</p>}
               {job?.errors.map((error, index) => (
