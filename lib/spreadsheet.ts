@@ -10,6 +10,14 @@ const SUPPORTED_EXTENSIONS = new Set([
   "ods",
 ]);
 
+export interface ParsedSpreadsheet {
+  fileName: string;
+  sizeBytes: number;
+  columns: string[];
+  rows: CaseData[];
+  startedAt: number;
+}
+
 function extensionOf(fileName: string) {
   const extension = fileName.split(".").pop()?.toLocaleLowerCase("en-US");
   return extension ?? "";
@@ -27,14 +35,10 @@ function normalizeCell(value: unknown): CellValue {
   return String(value);
 }
 
-export function parseAndImportSpreadsheet(
+export function parseSpreadsheet(
   buffer: Buffer,
   fileName: string,
-  actor: Pick<
-    AuthSession,
-    "userId" | "username" | "displayName" | "provider"
-  >,
-) {
+): ParsedSpreadsheet {
   const startedAt = Date.now();
   const extension = extensionOf(fileName);
 
@@ -50,6 +54,9 @@ export function parseAndImportSpreadsheet(
       type: "buffer",
       cellDates: true,
       dense: true,
+      // CSV buffers without a BOM are otherwise interpreted as a legacy
+      // single-byte encoding by SheetJS, which corrupts Chinese text.
+      codepage: extension === "csv" ? 65001 : undefined,
     });
   } catch {
     throw new Error("无法解析该表格，请确认文件未损坏且格式正确");
@@ -139,14 +146,37 @@ export function parseAndImportSpreadsheet(
     throw new Error("data Sheet 中没有可导入的有效用例");
   }
 
-  return importCases({
+  return {
     fileName,
     sizeBytes: buffer.byteLength,
     columns,
     rows,
     startedAt,
+  };
+}
+
+export function importParsedSpreadsheet(
+  spreadsheet: ParsedSpreadsheet,
+  actor: Pick<
+    AuthSession,
+    "userId" | "username" | "displayName" | "provider"
+  >,
+) {
+  return importCases({
+    ...spreadsheet,
     actor,
   });
+}
+
+export function parseAndImportSpreadsheet(
+  buffer: Buffer,
+  fileName: string,
+  actor: Pick<
+    AuthSession,
+    "userId" | "username" | "displayName" | "provider"
+  >,
+) {
+  return importParsedSpreadsheet(parseSpreadsheet(buffer, fileName), actor);
 }
 
 export function buildExportWorkbook(options: {

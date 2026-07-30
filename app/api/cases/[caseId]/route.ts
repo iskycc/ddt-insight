@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auditRequest } from "@/lib/audit";
-import { db } from "@/lib/db";
 import { errorResponse, requireApiSession } from "@/lib/http";
 import { deleteCase, getCase, updateCaseColumn } from "@/lib/repository";
 
@@ -97,21 +96,18 @@ export async function DELETE(
   const { caseId } = await context.params;
 
   try {
-    const deleted = db.transaction(() => {
-      const current = deleteCase(caseId);
-      if (current) {
-        auditRequest(request, session, {
-          action: "case.delete",
-          resourceType: "case",
-          resourceId: current.caseId,
-          detail: {
-            srNum: current.srNum,
-            sourceName: current.sourceName,
-          },
-        });
-      }
-      return current;
-    })();
+    const deleted = deleteCase(caseId, session, (current) => {
+      auditRequest(request, session, {
+        action: "case.delete",
+        resourceType: "case",
+        resourceId: current.caseId,
+        detail: {
+          srNum: current.srNum,
+          sourceName: current.sourceName,
+          recycleId: current.recycleId,
+        },
+      });
+    });
 
     if (!deleted) {
       auditRequest(request, session, {
@@ -124,7 +120,11 @@ export async function DELETE(
       return errorResponse("未找到该 CaseID", 404);
     }
 
-    return NextResponse.json({ success: true, caseId: deleted.caseId });
+    return NextResponse.json({
+      success: true,
+      caseId: deleted.caseId,
+      recycleId: deleted.recycleId,
+    });
   } catch (error) {
     auditRequest(request, session, {
       action: "case.delete",

@@ -30,6 +30,10 @@ DDT Insight 是完全离线运行的 Next.js 全栈用例数据管理平台：
 14. 用例编辑和导入覆盖必须写入独立、永久、追加式的用例历史，不得将字段前后内容写入审计；用例删除必须写入审计。
 15. 源码运行、独立离线目录和 Docker 镜像统一使用 Node.js 24.x LTS；不得降级到 Node.js 20。
 16. 审计查询必须保持分页，并支持分类、操作、结果筛选以及人员、资源、操作、IP 和详情搜索。
+17. LDAP 登录必须按配置同步显示名称、mail 和多值 Group 属性；目录 Group 只作为用户档案，不得自动提升平台角色。
+18. 普通和批量删除必须先进入 `deleted_cases` 回收站；彻底删除不得级联删除永久用例历史。
+19. 数据库恢复必须先校验加密认证、哈希、SQLite 完整性和本地恢复管理员，并在进程重启、SQLite 打开前生效；不得在线替换已打开的数据库文件。
+20. 异步导入任务必须持久化状态、限制上传和解压大小、清理临时文件，并在真正写入前再次执行模板与冲突校验。
 
 ## 关键目录
 
@@ -38,6 +42,9 @@ DDT Insight 是完全离线运行的 Next.js 全栈用例数据管理平台：
 - `lib/db.ts`：SQLite 初始化与性能参数。
 - `lib/repository.ts`：索引查询、导入写入、编辑和统计逻辑。
 - `lib/case-history.ts`：用例前后快照、字段差异、操作者和游标分页历史。
+- `lib/case-management.ts`：高级检索、批量修改、字段模板和校验。
+- `lib/import-jobs.ts`：导入预检、冲突策略、持久化任务和来源追踪。
+- `lib/maintenance.ts`：加密备份恢复、容量诊断和 WAL 维护。
 - `lib/spreadsheet.ts`：表格解析与导出。
 - `lib/auth.ts`：本地与 LDAP 登录、签名 Session。
 - `lib/users.ts`：用户初始化、角色、状态与密码管理。
@@ -63,6 +70,16 @@ DDT Insight 是完全离线运行的 Next.js 全栈用例数据管理平台：
 - `PATCH /api/cases/[caseId]`
 - `DELETE /api/cases/[caseId]`
 - `GET /api/cases/[caseId]/history`
+- `POST /api/cases/[caseId]/history/[historyId]/restore`
+- `GET/POST /api/cases/search`
+- `POST /api/cases/bulk/update`
+- `POST /api/cases/bulk/delete`
+- `POST /api/cases/bulk/export`
+- `GET/POST/PUT/DELETE /api/templates...`
+- `POST /api/import/preview`
+- `POST /api/import/jobs`
+- `GET /api/import/jobs/[id]`
+- `POST /api/import/jobs/[id]/cancel`
 - `GET /api/groups`
 - `POST /api/import`
 - `GET /api/export`
@@ -74,6 +91,13 @@ DDT Insight 是完全离线运行的 Next.js 全栈用例数据管理平台：
 - `GET/PUT /api/admin/ldap`
 - `POST /api/admin/ldap/test`
 - `GET /api/admin/audit`
+- `GET /api/admin/imports`
+- `GET /api/admin/maintenance`
+- `GET/POST/DELETE /api/admin/maintenance/backups...`
+- `POST/DELETE /api/admin/maintenance/restore`
+- `POST /api/admin/maintenance/checkpoint`
+- `GET/DELETE /api/admin/recycle...`
+- `POST /api/admin/recycle/[id]/restore`
 
 ## 开发与验收命令
 
@@ -109,10 +133,16 @@ docker compose config
 9. 页面资源中不存在外部 HTTP 依赖。
 10. 空数据库能初始化本地管理员，旧数据库升级不影响用例数据。
 11. 编辑员访问系统管理接口返回 403，禁用用户的现有 Session 立即失效。
-12. LDAP Bind 密码加密落库且 API 不回传明文；过滤器缺少占位符时拒绝保存。
+12. LDAP Bind 密码加密落库且 API 不回传明文；过滤器缺少占位符时拒绝保存，登录后同步 mail 与 Group。
 13. 登录、用户、LDAP、导入、导出和用例删除生成可分页审计；用例编辑和覆盖只生成独立历史。
 14. 编辑和重复导入记录修改人及前后差异；CaseID 改名后历史连续，删除后历史行仍保留。
 15. 审计可按分类、操作和结果组合筛选，并可搜索人员、资源、操作、IP 与详情。
+16. 导入预检正确区分新增、变更和未变化，三种冲突策略均在执行前二次校验。
+17. 异步任务完成、取消、失败和进程恢复状态正确，任务临时文件得到清理。
+18. 模板规则同时约束导入与批量修改，失败时批量事务不产生部分写入。
+19. 普通/批量删除进入回收站，恢复冲突被拒绝，彻底删除后用例历史仍存在。
+20. 加密备份可下载并恢复；错误口令和损坏文件被拒绝，恢复只在重启后生效且会先生成安全备份。
+21. 运维诊断展示磁盘/数据库/WAL/备份容量、完整性、运行版本和分页回收站。
 
 ## 风格与性能
 

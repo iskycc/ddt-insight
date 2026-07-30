@@ -5,7 +5,11 @@ import {
 } from "@/lib/archive";
 import { auditRequest } from "@/lib/audit";
 import { errorResponse, requireApiSession } from "@/lib/http";
-import { parseAndImportSpreadsheet } from "@/lib/spreadsheet";
+import { validateImportSpreadsheet } from "@/lib/import-jobs";
+import {
+  importParsedSpreadsheet,
+  parseSpreadsheet,
+} from "@/lib/spreadsheet";
 import type { ImportResult } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -84,9 +88,10 @@ export async function POST(request: NextRequest) {
   for (const spreadsheet of spreadsheets) {
     try {
       results.push(
-        parseAndImportSpreadsheet(
-          spreadsheet.buffer,
-          spreadsheet.fileName,
+        importParsedSpreadsheet(
+          validateImportSpreadsheet(
+            parseSpreadsheet(spreadsheet.buffer, spreadsheet.fileName),
+          ),
           session,
         ),
       );

@@ -10,6 +10,8 @@ export async function GET() {
     authenticated: true,
     username: session.username,
     displayName: session.displayName,
+    email: session.email,
+    groups: session.groups,
     role: session.role,
     provider: session.provider,
   });

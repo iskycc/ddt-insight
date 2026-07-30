@@ -1,0 +1,402 @@
+.shell {
+  display: grid;
+  align-content: start;
+  gap: 18px;
+  color: #172033;
+}
+
+.tabs {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 5px;
+  padding: 5px;
+  border: 1px solid rgba(24, 38, 64, 0.09);
+  border-radius: 16px;
+  background: rgba(238, 242, 248, 0.78);
+}
+
+.tab,
+.button,
+.iconButton,
+.result,
+.dangerButton {
+  border: 0;
+  font: inherit;
+  cursor: pointer;
+}
+
+.tab {
+  min-height: 40px;
+  border-radius: 12px;
+  color: #627087;
+  background: transparent;
+  font-weight: 650;
+}
+
+.tabActive {
+  color: #13284a;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 4px 15px rgba(37, 57, 87, 0.1);
+}
+
+.panel,
+.card {
+  border: 1px solid rgba(25, 42, 70, 0.1);
+  border-radius: 20px;
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.98), rgba(247, 249, 253, 0.96));
+  box-shadow: 0 16px 42px rgba(35, 52, 81, 0.08);
+}
+
+.panel {
+  display: grid;
+  gap: 16px;
+  padding: 20px;
+}
+
+.card {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+}
+
+.heading,
+.row,
+.actions,
+.resultMeta,
+.ruleHeader {
+  display: flex;
+  align-items: center;
+}
+
+.heading {
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.heading h3,
+.card h4 {
+  margin: 0;
+  letter-spacing: -0.025em;
+}
+
+.heading p,
+.card p,
+.muted {
+  margin: 4px 0 0;
+  color: #728096;
+  font-size: 0.88rem;
+  line-height: 1.55;
+}
+
+.count {
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  padding: 0 11px;
+  border-radius: 999px;
+  color: #1760b8;
+  background: #e9f3ff;
+  font-size: 0.8rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.grid,
+.searchGrid,
+.ruleGrid {
+  display: grid;
+  gap: 12px;
+}
+
+.grid {
+  grid-template-columns: minmax(150px, 0.8fr) minmax(190px, 1.2fr);
+}
+
+.searchGrid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.ruleGrid {
+  grid-template-columns: minmax(120px, 1fr) 130px minmax(120px, 1fr);
+}
+
+.field {
+  display: grid;
+  gap: 7px;
+}
+
+.field > span {
+  color: #57667c;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.input,
+.textarea {
+  width: 100%;
+  border: 1px solid rgba(28, 49, 78, 0.14);
+  border-radius: 12px;
+  outline: none;
+  color: #15243b;
+  background: rgba(249, 251, 254, 0.9);
+  font: inherit;
+  box-sizing: border-box;
+  transition:
+    border-color 160ms ease,
+    box-shadow 160ms ease,
+    background 160ms ease;
+}
+
+.input {
+  min-height: 42px;
+  padding: 0 12px;
+}
+
+.textarea {
+  min-height: 76px;
+  padding: 11px 12px;
+  resize: vertical;
+}
+
+.input:focus,
+.textarea:focus {
+  border-color: rgba(20, 112, 220, 0.5);
+  background: #fff;
+  box-shadow: 0 0 0 4px rgba(26, 124, 235, 0.1);
+}
+
+.select {
+  width: 100%;
+}
+
+.row,
+.actions {
+  flex-wrap: wrap;
+  gap: 9px;
+}
+
+.actions {
+  justify-content: flex-end;
+}
+
+.button,
+.dangerButton,
+.iconButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 40px;
+  border-radius: 12px;
+  padding: 0 14px;
+  font-weight: 700;
+  transition:
+    transform 150ms ease,
+    box-shadow 150ms ease,
+    background 150ms ease;
+}
+
+.button {
+  color: #fff;
+  background: linear-gradient(135deg, #1878e8, #1260c3);
+  box-shadow: 0 8px 20px rgba(22, 105, 207, 0.2);
+}
+
+.buttonSecondary {
+  color: #31435d;
+  background: #edf2f8;
+  box-shadow: none;
+}
+
+.dangerButton {
+  color: #b12434;
+  background: #fff0f2;
+}
+
+.button:hover,
+.dangerButton:hover,
+.iconButton:hover {
+  transform: translateY(-1px);
+}
+
+.button:disabled,
+.dangerButton:disabled,
+.iconButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.48;
+  transform: none;
+}
+
+.iconButton {
+  width: 36px;
+  min-height: 36px;
+  padding: 0;
+  color: #68758a;
+  background: #edf2f7;
+}
+
+.notice,
+.error {
+  margin: 0;
+  border-radius: 12px;
+  padding: 10px 12px;
+  font-size: 0.86rem;
+  line-height: 1.5;
+}
+
+.notice {
+  color: #176247;
+  background: #eaf8f2;
+}
+
+.error {
+  color: #a62c3b;
+  background: #fff0f2;
+}
+
+.filters,
+.results,
+.templates,
+.rules {
+  display: grid;
+  gap: 10px;
+}
+
+.filterRow {
+  display: grid;
+  grid-template-columns: minmax(110px, 0.8fr) 130px minmax(120px, 1fr) 36px;
+  gap: 8px;
+  align-items: end;
+}
+
+.result {
+  display: grid;
+  gap: 8px;
+  width: 100%;
+  padding: 13px 14px;
+  border-radius: 14px;
+  text-align: left;
+  color: inherit;
+  background: rgba(244, 247, 251, 0.9);
+}
+
+.result:hover {
+  background: #edf4fc;
+}
+
+.result strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.resultMeta {
+  flex-wrap: wrap;
+  gap: 7px 14px;
+  color: #75839a;
+  font-size: 0.78rem;
+}
+
+.templateItem {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: #f3f6fa;
+}
+
+.templateItem strong,
+.templateItem small {
+  display: block;
+}
+
+.templateItem small {
+  margin-top: 4px;
+  color: #738097;
+}
+
+.rule {
+  display: grid;
+  gap: 10px;
+  padding: 13px;
+  border: 1px solid rgba(30, 48, 77, 0.09);
+  border-radius: 14px;
+  background: rgba(248, 250, 253, 0.92);
+}
+
+.ruleHeader {
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.modalBackdrop {
+  position: fixed;
+  z-index: 1000;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(12, 21, 35, 0.42);
+  backdrop-filter: blur(10px);
+}
+
+.modal {
+  width: min(440px, 100%);
+  padding: 22px;
+  border: 1px solid rgba(255, 255, 255, 0.72);
+  border-radius: 22px;
+  background: rgba(255, 255, 255, 0.98);
+  box-shadow: 0 30px 80px rgba(19, 31, 51, 0.28);
+}
+
+.modal h3 {
+  margin: 0 0 8px;
+}
+
+.modal p {
+  margin: 0 0 18px;
+  color: #68768c;
+  line-height: 1.6;
+}
+
+.empty {
+  padding: 24px 14px;
+  border: 1px dashed rgba(38, 59, 89, 0.16);
+  border-radius: 15px;
+  color: #7a879a;
+  text-align: center;
+}
+
+@media (max-width: 720px) {
+  .grid,
+  .searchGrid,
+  .ruleGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .filterRow {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .filterRow > :last-child {
+    grid-column: 2;
+    justify-self: end;
+  }
+}
+
+@media (max-width: 480px) {
+  .tabs {
+    grid-template-columns: 1fr;
+  }
+
+  .filterRow,
+  .templateItem {
+    grid-template-columns: 1fr;
+  }
+
+  .filterRow > :last-child {
+    grid-column: 1;
+  }
+}

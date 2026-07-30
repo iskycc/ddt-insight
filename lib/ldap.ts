@@ -19,6 +19,8 @@ interface LdapConfigRow {
   user_base_dn: string;
   user_filter: string;
   display_name_attribute: string;
+  mail_attribute: string;
+  group_attribute: string;
   default_role: UserRole;
   tls_reject_unauthorized: number;
   connect_timeout_ms: number;
@@ -34,6 +36,8 @@ const defaultConfig = {
   userBaseDn: "",
   userFilter: "(uid={{username}})",
   displayNameAttribute: "displayName",
+  mailAttribute: "mail",
+  groupAttribute: "memberOf",
   defaultRole: "editor" as UserRole,
   tlsRejectUnauthorized: true,
   connectTimeoutMs: 5000,
@@ -45,7 +49,8 @@ function getConfigRow() {
   return db
     .prepare(`
       SELECT enabled, url, bind_dn, bind_password_encrypted, user_base_dn,
-             user_filter, display_name_attribute, default_role,
+             user_filter, display_name_attribute, mail_attribute,
+             group_attribute, default_role,
              tls_reject_unauthorized, connect_timeout_ms, updated_at, updated_by
       FROM ldap_config WHERE id = 1
     `)
@@ -63,6 +68,8 @@ export function getLdapConfig(): LdapConfigPublic {
     userBaseDn: row.user_base_dn,
     userFilter: row.user_filter,
     displayNameAttribute: row.display_name_attribute,
+    mailAttribute: row.mail_attribute,
+    groupAttribute: row.group_attribute,
     defaultRole: row.default_role,
     tlsRejectUnauthorized: Boolean(row.tls_reject_unauthorized),
     connectTimeoutMs: row.connect_timeout_ms,
@@ -101,6 +108,8 @@ function validateConfig(input: {
   userBaseDn: string;
   userFilter: string;
   displayNameAttribute: string;
+  mailAttribute: string;
+  groupAttribute: string;
   defaultRole: UserRole;
   connectTimeoutMs: number;
   bindDn?: string;
@@ -119,8 +128,17 @@ function validateConfig(input: {
     throw new Error("用户过滤器必须包含 {{username}} 占位符");
   }
   if (input.userFilter.length > 1024) throw new Error("用户过滤器过长");
-  if (!/^[a-zA-Z][a-zA-Z0-9;-]*$/.test(input.displayNameAttribute)) {
-    throw new Error("显示名称属性格式不正确");
+  const attributes = [
+    ["显示名称", input.displayNameAttribute, true],
+    ["邮箱", input.mailAttribute, false],
+    ["Group", input.groupAttribute, false],
+  ] as const;
+  for (const [label, attribute, required] of attributes) {
+    if (required && !attribute) throw new Error(`${label}属性不能为空`);
+    if (attribute.length > 128) throw new Error(`${label}属性过长`);
+    if (attribute && !/^[a-zA-Z][a-zA-Z0-9;-]*$/.test(attribute)) {
+      throw new Error(`${label}属性格式不正确`);
+    }
   }
   if (!["admin", "editor"].includes(input.defaultRole)) {
     throw new Error("默认角色不正确");
@@ -144,6 +162,8 @@ export function saveLdapConfig(
     userBaseDn: string;
     userFilter: string;
     displayNameAttribute: string;
+    mailAttribute: string;
+    groupAttribute: string;
     defaultRole: UserRole;
     tlsRejectUnauthorized: boolean;
     connectTimeoutMs: number;
@@ -157,6 +177,8 @@ export function saveLdapConfig(
     userBaseDn: input.userBaseDn.trim(),
     userFilter: input.userFilter.trim(),
     displayNameAttribute: input.displayNameAttribute.trim(),
+    mailAttribute: input.mailAttribute.trim(),
+    groupAttribute: input.groupAttribute.trim(),
   };
   validateConfig(normalized);
 
@@ -172,9 +194,10 @@ export function saveLdapConfig(
   db.prepare(`
     INSERT INTO ldap_config (
       id, enabled, url, bind_dn, bind_password_encrypted, user_base_dn,
-      user_filter, display_name_attribute, default_role,
+      user_filter, display_name_attribute, mail_attribute, group_attribute,
+      default_role,
       tls_reject_unauthorized, connect_timeout_ms, updated_at, updated_by
-    ) VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ) VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(id) DO UPDATE SET
       enabled = excluded.enabled,
       url = excluded.url,
@@ -183,6 +206,8 @@ export function saveLdapConfig(
       user_base_dn = excluded.user_base_dn,
       user_filter = excluded.user_filter,
       display_name_attribute = excluded.display_name_attribute,
+      mail_attribute = excluded.mail_attribute,
+      group_attribute = excluded.group_attribute,
       default_role = excluded.default_role,
       tls_reject_unauthorized = excluded.tls_reject_unauthorized,
       connect_timeout_ms = excluded.connect_timeout_ms,
@@ -196,6 +221,8 @@ export function saveLdapConfig(
     normalized.userBaseDn,
     normalized.userFilter,
     normalized.displayNameAttribute,
+    normalized.mailAttribute,
+    normalized.groupAttribute,
     normalized.defaultRole,
     normalized.tlsRejectUnauthorized ? 1 : 0,
     normalized.connectTimeoutMs,
@@ -254,15 +281,37 @@ async function bindService(
   }
 }
 
+function attributeTexts(entry: Entry, attribute: string) {
+  if (!attribute) return [];
+  const expected = attribute.toLocaleLowerCase("en-US");
+  const matches = Object.entries(entry)
+    .filter(([key]) => {
+      const normalized = key.toLocaleLowerCase("en-US");
+      return normalized === expected || normalized.startsWith(`${expected};`);
+    })
+    .flatMap(([, value]) => (Array.isArray(value) ? value : [value]));
+
+  return matches
+    .map((value) =>
+      Buffer.isBuffer(value) ? value.toString("utf8") : String(value ?? ""),
+    )
+    .map((value) => value.trim())
+    .filter(Boolean);
+}
+
 function attributeText(entry: Entry, attribute: string) {
-  const match = Object.entries(entry).find(
-    ([key]) => key.toLocaleLowerCase("en-US") === attribute.toLocaleLowerCase("en-US"),
-  )?.[1];
-  if (Array.isArray(match)) {
-    const first = match[0];
-    return Buffer.isBuffer(first) ? first.toString("utf8") : String(first ?? "");
+  const values = attributeTexts(entry, attribute);
+  return values[0] ?? "";
+}
+
+function uniqueAttributes(values: string[]) {
+  const unique = new Map<string, string>();
+  for (const value of values) {
+    const normalized = value.toLocaleLowerCase("en-US");
+    if (!unique.has(normalized)) unique.set(normalized, value);
+    if (unique.size >= 512) break;
   }
-  return Buffer.isBuffer(match) ? match.toString("utf8") : String(match ?? "");
+  return [...unique.values()];
 }
 
 export async function testLdapConnection() {
@@ -310,7 +359,15 @@ export async function authenticateLdapUser(
       scope: "sub",
       filter,
       sizeLimit: 2,
-      attributes: [config.displayNameAttribute],
+      attributes: [
+        ...new Set(
+          [
+            config.displayNameAttribute,
+            config.mailAttribute,
+            config.groupAttribute,
+          ].filter(Boolean),
+        ),
+      ],
     });
     if (searchEntries.length !== 1) return null;
 
@@ -319,6 +376,10 @@ export async function authenticateLdapUser(
     return upsertLdapUser({
       username,
       displayName: attributeText(entry, config.displayNameAttribute) || username,
+      email: attributeText(entry, config.mailAttribute),
+      groups: uniqueAttributes(
+        attributeTexts(entry, config.groupAttribute),
+      ),
       defaultRole: config.defaultRole,
     });
   } catch {

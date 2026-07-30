@@ -1,7 +1,6 @@
 "use client";
 
 import {
-  ArrowDownToLine,
   ArrowLeft,
   ArrowRight,
   BarChart3,
@@ -12,15 +11,16 @@ import {
   ChevronRight,
   CircleHelp,
   CloudOff,
+  Copy,
   Database,
   Download,
   ExternalLink,
   File,
-  FileArchive,
   FileClock,
   FileSpreadsheet,
   Gauge,
   LayoutGrid,
+  ListChecks,
   ListFilter,
   LoaderCircle,
   LogOut,
@@ -32,6 +32,7 @@ import {
   Pencil,
   Plus,
   RefreshCw,
+  RotateCcw,
   Save,
   Search,
   Server,
@@ -48,9 +49,7 @@ import {
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import {
-  ChangeEvent,
   CSSProperties,
-  DragEvent,
   KeyboardEvent,
   useCallback,
   useEffect,
@@ -65,22 +64,34 @@ import {
   UserManagement,
 } from "@/components/admin-console";
 import { CustomSelect } from "@/components/custom-controls";
+import {
+  ImportCenter,
+  ImportSourceTracker,
+} from "@/components/import-center";
+import { CaseManagementTools } from "@/components/case-management-tools";
+import { MaintenanceCenter } from "@/components/maintenance-center";
 import type {
   CaseData,
   CaseHistoryItem,
   CaseListItem,
   DashboardStats,
-  ImportResult,
   UserProvider,
   UserRole,
 } from "@/lib/types";
+import {
+  groovyClientExample,
+  java8ClientExample,
+} from "@/lib/api-client-examples";
 
 type WorkspaceView =
   | "cases"
+  | "caseTools"
   | "overview"
   | "api"
   | "users"
   | "ldap"
+  | "imports"
+  | "maintenance"
   | "audit";
 type GroupItem = { srNum: string; count: number };
 
@@ -98,6 +109,23 @@ function formatValue(value: unknown) {
   return String(value);
 }
 
+async function copyText(value: string) {
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(value);
+    return;
+  }
+
+  const textarea = document.createElement("textarea");
+  textarea.value = value;
+  textarea.style.position = "fixed";
+  textarea.style.opacity = "0";
+  document.body.appendChild(textarea);
+  textarea.select();
+  const copied = document.execCommand("copy");
+  textarea.remove();
+  if (!copied) throw new Error("copy unavailable");
+}
+
 function timeAgo(value: string) {
   const distance = Date.now() - new Date(value).getTime();
   if (distance < 60_000) return "刚刚";
@@ -112,10 +140,13 @@ function timeAgo(value: string) {
 
 const viewLabels: Record<WorkspaceView, string> = {
   cases: "用例管理",
+  caseTools: "用例工具",
   overview: "数据概览",
   api: "开放 API",
   users: "用户管理",
   ldap: "LDAP",
+  imports: "导入来源",
+  maintenance: "运维中心",
   audit: "审计日志",
 };
 
@@ -142,6 +173,7 @@ export function WorkspaceClient({
   const [selectedGroup, setSelectedGroup] = useState("");
   const [selectedCaseId, setSelectedCaseId] = useState("");
   const [selectedCase, setSelectedCase] = useState<CaseData | null>(null);
+  const [selectedCaseIds, setSelectedCaseIds] = useState<string[]>([]);
   const [casesLoading, setCasesLoading] = useState(true);
   const [caseLoading, setCaseLoading] = useState(false);
   const [hasMore, setHasMore] = useState(false);
@@ -149,6 +181,7 @@ export function WorkspaceClient({
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [historyRevision, setHistoryRevision] = useState(0);
   const [toast, setToast] = useState("");
+  const [deepLinkReady, setDeepLinkReady] = useState(false);
   const requestSequence = useRef(0);
 
   useEffect(() => {
@@ -156,6 +189,26 @@ export function WorkspaceClient({
       window.localStorage.getItem(SIDEBAR_HIDDEN_STORAGE_KEY) === "true",
     );
   }, []);
+
+  useEffect(() => {
+    const caseId = new URLSearchParams(window.location.search).get("caseId");
+    if (caseId) {
+      setQuery(caseId);
+      setSelectedCaseId(caseId);
+    }
+    setDeepLinkReady(true);
+  }, []);
+
+  useEffect(() => {
+    if (!deepLinkReady) return;
+    const url = new URL(window.location.href);
+    if (view === "cases" && selectedCaseId) {
+      url.searchParams.set("caseId", selectedCaseId);
+    } else {
+      url.searchParams.delete("caseId");
+    }
+    window.history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`);
+  }, [deepLinkReady, selectedCaseId, view]);
 
   const handleUnauthorized = useCallback(
     (response: Response) => {
@@ -201,13 +254,13 @@ export function WorkspaceClient({
         const response = await fetch(`/api/cases?${parameters}`, {
           cache: "no-store",
         });
-        if (handleUnauthorized(response)) return;
+        if (handleUnauthorized(response)) return [];
         if (!response.ok) throw new Error("读取用例失败");
         const body = (await response.json()) as {
           items: CaseListItem[];
           hasMore: boolean;
         };
-        if (sequence !== requestSequence.current) return;
+        if (sequence !== requestSequence.current) return [];
 
         setCases((current) =>
           reset ? body.items : [...current, ...body.items],
@@ -222,10 +275,12 @@ export function WorkspaceClient({
           setSelectedCaseId(nextSelected);
           if (!nextSelected) setSelectedCase(null);
         }
+        return body.items;
       } catch {
         if (sequence === requestSequence.current) {
           setToast("暂时无法读取用例，请稍后重试");
         }
+        return [];
       } finally {
         if (sequence === requestSequence.current) setCasesLoading(false);
       }
@@ -353,6 +408,15 @@ export function WorkspaceClient({
             {stats && <em>{countFormatter.format(stats.totalCases)}</em>}
           </button>
           <button
+            className={classNames(view === "caseTools" && "active")}
+            type="button"
+            onClick={() => selectView("caseTools")}
+          >
+            <ListChecks size={18} />
+            批量与检索
+            {selectedCaseIds.length > 0 && <em>{selectedCaseIds.length}</em>}
+          </button>
+          <button
             className={classNames(view === "overview" && "active")}
             type="button"
             onClick={() => selectView("overview")}
@@ -388,6 +452,22 @@ export function WorkspaceClient({
               >
                 <Network size={18} />
                 LDAP
+              </button>
+              <button
+                className={classNames(view === "imports" && "active")}
+                type="button"
+                onClick={() => selectView("imports")}
+              >
+                <FileClock size={18} />
+                导入来源
+              </button>
+              <button
+                className={classNames(view === "maintenance" && "active")}
+                type="button"
+                onClick={() => selectView("maintenance")}
+              >
+                <Gauge size={18} />
+                运维中心
               </button>
               <button
                 className={classNames(view === "audit" && "active")}
@@ -483,6 +563,7 @@ export function WorkspaceClient({
             selectedGroup={selectedGroup}
             selectedCaseId={selectedCaseId}
             selectedCase={selectedCase}
+            selectedCaseIds={selectedCaseIds}
             casesLoading={casesLoading}
             caseLoading={caseLoading}
             hasMore={hasMore}
@@ -491,7 +572,24 @@ export function WorkspaceClient({
             onQueryChange={setQuery}
             onGroupChange={setSelectedGroup}
             onCaseSelect={setSelectedCaseId}
-            onLoadMore={() => void loadCases(false)}
+            onCaseSelectionChange={(caseId, checked) => {
+              setSelectedCaseIds((current) =>
+                checked
+                  ? current.includes(caseId)
+                    ? current
+                    : [...current, caseId]
+                  : current.filter((item) => item !== caseId),
+              );
+            }}
+            onLoadedSelectionChange={(checked) => {
+              const loaded = new Set(cases.map((item) => item.caseId));
+              setSelectedCaseIds((current) =>
+                checked
+                  ? [...new Set([...current, ...loaded])]
+                  : current.filter((item) => !loaded.has(item)),
+              );
+            }}
+            onLoadMore={() => loadCases(false)}
             onImport={() => setImportOpen(true)}
             onCaseUpdate={(data) => {
               const nextCaseId = String(data.CaseID ?? selectedCaseId);
@@ -511,7 +609,27 @@ export function WorkspaceClient({
                 ),
               );
               if (nextCaseId !== selectedCaseId) {
+                if (
+                  query &&
+                  !nextCaseId
+                    .toLocaleLowerCase("en-US")
+                    .startsWith(query.toLocaleLowerCase("en-US"))
+                ) {
+                  setQuery(nextCaseId);
+                }
+                setSelectedCaseIds((current) =>
+                  current.map((item) =>
+                    item === selectedCaseId ? nextCaseId : item,
+                  ),
+                );
                 setSelectedCaseId(nextCaseId);
+              }
+              if (
+                selectedGroup &&
+                nextSrNum.toLocaleLowerCase("en-US") !==
+                  selectedGroup.toLocaleLowerCase("en-US")
+              ) {
+                setSelectedGroup("");
               }
               setHistoryRevision((current) => current + 1);
             }}
@@ -525,11 +643,38 @@ export function WorkspaceClient({
               );
               setSelectedCase(null);
               setSelectedCaseId("");
+              setSelectedCaseIds((current) =>
+                current.filter(
+                  (item) =>
+                    item.toLocaleLowerCase("en-US") !==
+                    caseId.toLocaleLowerCase("en-US"),
+                ),
+              );
               setHistoryRevision((current) => current + 1);
               await Promise.all([loadGroups(), loadStats()]);
               await loadCases(true);
             }}
             onToast={setToast}
+          />
+        )}
+
+        {view === "caseTools" && (
+          <CaseManagementTools
+            selectedCaseIds={selectedCaseIds}
+            initialSrNum={selectedGroup}
+            onSelectionCleared={() => setSelectedCaseIds([])}
+            onCasesChanged={async () => {
+              setSelectedCase(null);
+              setHistoryRevision((current) => current + 1);
+              await Promise.all([loadGroups(), loadStats()]);
+              await loadCases(true);
+            }}
+            onOpenCase={(caseId) => {
+              setSelectedGroup("");
+              setQuery(caseId);
+              setSelectedCaseId(caseId);
+              setView("cases");
+            }}
           />
         )}
 
@@ -547,11 +692,25 @@ export function WorkspaceClient({
           <LdapSettings onToast={setToast} />
         )}
 
+        {view === "imports" && role === "admin" && <ImportSourceTracker />}
+
+        {view === "maintenance" && role === "admin" && (
+          <MaintenanceCenter
+            onToast={setToast}
+            onCasesChanged={() => {
+              setSelectedCase(null);
+              setSelectedCaseId("");
+              setSelectedCaseIds([]);
+              void Promise.all([loadGroups(), loadStats(), loadCases(true)]);
+            }}
+          />
+        )}
+
         {view === "audit" && role === "admin" && <AuditLogView />}
       </div>
 
       {importOpen && (
-        <ImportModal
+        <ImportCenter
           onClose={() => setImportOpen(false)}
           onImported={refreshAfterImport}
           onToast={setToast}
@@ -575,6 +734,7 @@ function CaseManager({
   selectedGroup,
   selectedCaseId,
   selectedCase,
+  selectedCaseIds,
   casesLoading,
   caseLoading,
   hasMore,
@@ -583,6 +743,8 @@ function CaseManager({
   onQueryChange,
   onGroupChange,
   onCaseSelect,
+  onCaseSelectionChange,
+  onLoadedSelectionChange,
   onLoadMore,
   onImport,
   onCaseUpdate,
@@ -595,6 +757,7 @@ function CaseManager({
   selectedGroup: string;
   selectedCaseId: string;
   selectedCase: CaseData | null;
+  selectedCaseIds: string[];
   casesLoading: boolean;
   caseLoading: boolean;
   hasMore: boolean;
@@ -603,7 +766,9 @@ function CaseManager({
   onQueryChange: (value: string) => void;
   onGroupChange: (value: string) => void;
   onCaseSelect: (value: string) => void;
-  onLoadMore: () => void;
+  onCaseSelectionChange: (caseId: string, checked: boolean) => void;
+  onLoadedSelectionChange: (checked: boolean) => void;
+  onLoadMore: () => Promise<CaseListItem[]>;
   onImport: () => void;
   onCaseUpdate: (value: CaseData) => void;
   onCaseDeleted: (caseId: string) => Promise<void>;
@@ -611,6 +776,13 @@ function CaseManager({
 }) {
   const currentIndex = cases.findIndex((item) => item.caseId === selectedCaseId);
   const currentItem = cases[currentIndex];
+  const selectedCaseIdSet = useMemo(
+    () => new Set(selectedCaseIds),
+    [selectedCaseIds],
+  );
+  const allLoadedSelected =
+    cases.length > 0 &&
+    cases.every((item) => selectedCaseIdSet.has(item.caseId));
   const caseListPanelRef = useRef<HTMLElement>(null);
   const resizeStart = useRef({ pointerX: 0, width: 0 });
   const widthRef = useRef(0);
@@ -618,6 +790,8 @@ function CaseManager({
   const [resizing, setResizing] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [loadingMoreForNavigation, setLoadingMoreForNavigation] =
+    useState(false);
 
   const defaultCaseListWidth = useCallback(() => {
     const value = Number.parseFloat(
@@ -742,9 +916,96 @@ function CaseManager({
     };
   }, [clampCaseListWidth, resizing]);
 
-  function move(direction: -1 | 1) {
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(() => {
+      const list = caseListPanelRef.current?.querySelector<HTMLElement>(
+        ".case-list",
+      );
+      const active = list?.querySelector<HTMLElement>(
+        ".case-list-item.active",
+      );
+      if (!list || !active) return;
+
+      const listBounds = list.getBoundingClientRect();
+      const activeBounds = active.getBoundingClientRect();
+      if (activeBounds.bottom > listBounds.bottom) {
+        list.scrollBy({
+          top: activeBounds.bottom - listBounds.bottom + 8,
+          behavior: "auto",
+        });
+      } else if (activeBounds.top < listBounds.top) {
+        list.scrollBy({
+          top: activeBounds.top - listBounds.top - 8,
+          behavior: "auto",
+        });
+      }
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [cases.length, selectedCaseId]);
+
+  async function move(direction: -1 | 1) {
     const next = cases[currentIndex + direction];
-    if (next) onCaseSelect(next.caseId);
+    if (next) {
+      onCaseSelect(next.caseId);
+      return;
+    }
+    if (direction !== 1 || !hasMore || loadingMoreForNavigation) return;
+
+    setLoadingMoreForNavigation(true);
+    try {
+      const appended = await onLoadMore();
+      if (appended[0]) onCaseSelect(appended[0].caseId);
+    } finally {
+      setLoadingMoreForNavigation(false);
+    }
+  }
+
+  useEffect(() => {
+    const handleShortcut = (event: globalThis.KeyboardEvent) => {
+      if (
+        deleteOpen ||
+        event.altKey ||
+        event.ctrlKey ||
+        event.metaKey ||
+        event.shiftKey
+      ) {
+        return;
+      }
+
+      const target = event.target as HTMLElement | null;
+      if (
+        target?.matches(
+          "input, textarea, button, [contenteditable='true'], [role='combobox']",
+        )
+      ) {
+        return;
+      }
+
+      if (event.key === "ArrowDown" || event.key.toLowerCase() === "j") {
+        event.preventDefault();
+        void move(1);
+      } else if (
+        event.key === "ArrowUp" ||
+        event.key.toLowerCase() === "k"
+      ) {
+        event.preventDefault();
+        void move(-1);
+      }
+    };
+
+    window.addEventListener("keydown", handleShortcut);
+    return () => window.removeEventListener("keydown", handleShortcut);
+  });
+
+  async function copyCaseLink() {
+    const url = new URL(window.location.href);
+    url.searchParams.set("caseId", selectedCaseId);
+    try {
+      await copyText(url.toString());
+      onToast("用例链接已复制");
+    } catch {
+      onToast("无法访问剪贴板，请复制浏览器地址");
+    }
   }
 
   async function removeSelectedCase() {
@@ -765,7 +1026,7 @@ function CaseManager({
       const deletedCaseId = body.caseId ?? selectedCaseId;
       setDeleteOpen(false);
       await onCaseDeleted(deletedCaseId);
-      onToast(`已删除用例“${deletedCaseId}”`);
+      onToast(`已将用例“${deletedCaseId}”移入回收站`);
     } catch (error) {
       onToast(error instanceof Error ? error.message : "删除用例失败");
     } finally {
@@ -788,7 +1049,12 @@ function CaseManager({
         <div className="case-list-heading">
           <div>
             <h1>用例库</h1>
-            <span>{countFormatter.format(cases.length)} 条已加载</span>
+            <span>
+              {countFormatter.format(cases.length)} 条已加载
+              {selectedCaseIds.length
+                ? ` · 已选 ${countFormatter.format(selectedCaseIds.length)} 条`
+                : ""}
+            </span>
           </div>
           <button
             className="icon-button add-case-button"
@@ -807,6 +1073,16 @@ function CaseManager({
             {caseListWidth !== null && <em>{caseListWidth}px</em>}
           </span>
           <div>
+            <button
+              type="button"
+              title={allLoadedSelected ? "取消选择已加载用例" : "选择已加载用例"}
+              aria-label={
+                allLoadedSelected ? "取消选择已加载用例" : "选择已加载用例"
+              }
+              onClick={() => onLoadedSelectionChange(!allLoadedSelected)}
+            >
+              {allLoadedSelected ? <Check size={14} /> : <ListChecks size={14} />}
+            </button>
             <button
               type="button"
               title="紧凑宽度"
@@ -879,35 +1155,62 @@ function CaseManager({
             ))
           ) : cases.length ? (
             <>
-              {cases.map((item) => (
-                <button
-                  className={classNames(
-                    "case-list-item",
-                    item.caseId === selectedCaseId && "active",
-                  )}
-                  type="button"
-                  key={item.caseId}
-                  onClick={() => onCaseSelect(item.caseId)}
-                >
-                  <span className="case-file-icon">
-                    <File size={16} />
-                  </span>
-                  <p>
-                    <strong title={item.caseId}>{item.caseId}</strong>
-                    <small>
-                      {item.srNum}
-                      <i>·</i>
-                      {timeAgo(item.updatedAt)}
-                    </small>
-                  </p>
-                  <ChevronRight size={15} />
-                </button>
-              ))}
+              {cases.map((item) => {
+                const checked = selectedCaseIdSet.has(item.caseId);
+                return (
+                  <div
+                    className={classNames(
+                      "case-list-row",
+                      item.caseId === selectedCaseId && "active",
+                    )}
+                    key={item.caseId}
+                  >
+                    <button
+                      className={classNames(
+                        "case-list-select",
+                        checked && "checked",
+                      )}
+                      type="button"
+                      role="checkbox"
+                      aria-checked={checked}
+                      aria-label={`${checked ? "取消选择" : "选择"} ${item.caseId}`}
+                      onClick={() =>
+                        onCaseSelectionChange(item.caseId, !checked)
+                      }
+                    >
+                      <span className="custom-checkbox-box">
+                        {checked && <Check size={12} strokeWidth={3} />}
+                      </span>
+                    </button>
+                    <button
+                      className={classNames(
+                        "case-list-item",
+                        item.caseId === selectedCaseId && "active",
+                      )}
+                      type="button"
+                      onClick={() => onCaseSelect(item.caseId)}
+                    >
+                      <span className="case-file-icon">
+                        <File size={16} />
+                      </span>
+                      <p>
+                        <strong title={item.caseId}>{item.caseId}</strong>
+                        <small>
+                          {item.srNum}
+                          <i>·</i>
+                          {timeAgo(item.updatedAt)}
+                        </small>
+                      </p>
+                      <ChevronRight size={15} />
+                    </button>
+                  </div>
+                );
+              })}
               {hasMore && (
                 <button
                   className="load-more"
                   type="button"
-                  onClick={onLoadMore}
+                  onClick={() => void onLoadMore()}
                 >
                   加载更多
                   <ChevronDown size={14} />
@@ -985,8 +1288,17 @@ function CaseManager({
                 <button
                   className="button button-quiet button-small"
                   type="button"
+                  title="复制当前用例深链接"
+                  onClick={() => void copyCaseLink()}
+                >
+                  <Copy size={15} />
+                  复制链接
+                </button>
+                <button
+                  className="button button-quiet button-small"
+                  type="button"
                   disabled={currentIndex <= 0}
-                  onClick={() => move(-1)}
+                  onClick={() => void move(-1)}
                 >
                   <ChevronLeft size={16} />
                   上一条
@@ -994,11 +1306,20 @@ function CaseManager({
                 <button
                   className="button button-quiet button-small"
                   type="button"
-                  disabled={currentIndex >= cases.length - 1}
-                  onClick={() => move(1)}
+                  disabled={
+                    loadingMoreForNavigation ||
+                    (currentIndex >= cases.length - 1 && !hasMore)
+                  }
+                  onClick={() => void move(1)}
                 >
-                  下一条
-                  <ChevronRight size={16} />
+                  {loadingMoreForNavigation ? (
+                    <LoaderCircle className="spin" size={15} />
+                  ) : (
+                    <>
+                      下一条
+                      <ChevronRight size={16} />
+                    </>
+                  )}
                 </button>
                 <span className="toolbar-divider" />
                 <button
@@ -1094,6 +1415,10 @@ function CaseManager({
                 caseId={selectedCaseId}
                 revision={historyRevision}
                 onError={onToast}
+                onRestored={(data) => {
+                  onCaseUpdate(data);
+                  onToast("已恢复到所选变更发生前");
+                }}
               />
             </div>
           </>
@@ -1148,8 +1473,8 @@ function CaseManager({
             </span>
             <h2 id="case-delete-title">删除这条用例？</h2>
             <p>
-              用例 <strong>{selectedCaseId}</strong> 将从用例库中移除。
-              既有修改历史会永久保留，本次删除会写入安全审计日志。
+              用例 <strong>{selectedCaseId}</strong> 将移入回收站，
+              管理员可以恢复。既有修改历史会永久保留，本次操作会写入安全审计日志。
             </p>
             <div>
               <button
@@ -1171,7 +1496,7 @@ function CaseManager({
                 ) : (
                   <Trash2 size={16} />
                 )}
-                {deleting ? "正在删除" : "确认删除"}
+                {deleting ? "正在处理" : "移入回收站"}
               </button>
             </div>
           </section>
@@ -1204,16 +1529,21 @@ function CaseHistoryPanel({
   caseId,
   revision,
   onError,
+  onRestored,
 }: {
   caseId: string;
   revision: number;
   onError: (message: string) => void;
+  onRestored: (data: CaseData) => void;
 }) {
   const [items, setItems] = useState<CaseHistoryItem[]>([]);
   const [nextCursor, setNextCursor] = useState<number | null>(null);
   const [hasMore, setHasMore] = useState(false);
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState<Set<number>>(() => new Set());
+  const [restoreCandidate, setRestoreCandidate] =
+    useState<CaseHistoryItem | null>(null);
+  const [restoring, setRestoring] = useState(false);
   const requestId = useRef(0);
 
   const loadPage = useCallback(
@@ -1269,6 +1599,29 @@ function CaseHistoryPanel({
     };
   }, [caseId, loadPage, revision]);
 
+  async function restoreVersion(item: CaseHistoryItem) {
+    setRestoring(true);
+    try {
+      const response = await fetch(
+        `/api/cases/${encodeURIComponent(caseId)}/history/${item.id}/restore`,
+        { method: "POST" },
+      );
+      const body = (await response.json()) as {
+        data?: CaseData;
+        error?: string;
+      };
+      if (!response.ok || !body.data) {
+        throw new Error(body.error ?? "历史版本回滚失败");
+      }
+      setRestoreCandidate(null);
+      onRestored(body.data);
+    } catch (error) {
+      onError(error instanceof Error ? error.message : "历史版本回滚失败");
+    } finally {
+      setRestoring(false);
+    }
+  }
+
   return (
     <section className="case-history-panel">
       <div className="case-history-heading">
@@ -1314,6 +1667,15 @@ function CaseHistoryPanel({
                     <time dateTime={item.createdAt}>
                       {historyDate(item.createdAt)}
                     </time>
+                    <button
+                      className="case-history-restore"
+                      type="button"
+                      title={`恢复到变更 #${item.id} 发生前`}
+                      onClick={() => setRestoreCandidate(item)}
+                    >
+                      <RotateCcw size={13} />
+                      恢复至修改前
+                    </button>
                   </div>
 
                   <div className="case-history-actor">
@@ -1420,6 +1782,49 @@ function CaseHistoryPanel({
           )}
           加载更早记录
         </button>
+      )}
+
+      {restoreCandidate && (
+        <div className="modal-backdrop">
+          <section
+            className="case-delete-dialog"
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="history-restore-title"
+          >
+            <span className="case-delete-icon">
+              <RotateCcw size={22} />
+            </span>
+            <h2 id="history-restore-title">恢复到这次修改之前？</h2>
+            <p>
+              将把当前用例恢复为变更 #{restoreCandidate.id} 发生前的完整字段内容。
+              当前内容会先作为一条新的永久历史保存，因此仍可再次回滚。
+            </p>
+            <div>
+              <button
+                className="button button-quiet"
+                type="button"
+                disabled={restoring}
+                onClick={() => setRestoreCandidate(null)}
+              >
+                取消
+              </button>
+              <button
+                className="button button-primary"
+                type="button"
+                disabled={restoring}
+                onClick={() => void restoreVersion(restoreCandidate)}
+              >
+                {restoring ? (
+                  <LoaderCircle className="spin" size={16} />
+                ) : (
+                  <RotateCcw size={16} />
+                )}
+                {restoring ? "正在回滚" : "确认回滚"}
+              </button>
+            </div>
+          </section>
+        </div>
       )}
     </section>
   );
@@ -1542,6 +1947,22 @@ function EditableField({
           <button
             className="field-edit-button"
             type="button"
+            aria-label={`复制 ${column}`}
+            onClick={async () => {
+              try {
+                await copyText(formatValue(value));
+                onError(`“${column}”已复制`);
+              } catch {
+                onError("无法访问剪贴板");
+              }
+            }}
+          >
+            <Copy size={14} />
+            复制
+          </button>
+          <button
+            className="field-edit-button"
+            type="button"
             aria-label={`编辑 ${column}`}
             onClick={() => setEditing(true)}
           >
@@ -1551,262 +1972,6 @@ function EditableField({
         </div>
       )}
     </article>
-  );
-}
-
-function ImportModal({
-  onClose,
-  onImported,
-  onToast,
-}: {
-  onClose: () => void;
-  onImported: () => Promise<void>;
-  onToast: (message: string) => void;
-}) {
-  const inputRef = useRef<HTMLInputElement>(null);
-  const [files, setFiles] = useState<File[]>([]);
-  const [dragging, setDragging] = useState(false);
-  const [uploading, setUploading] = useState(false);
-  const [errors, setErrors] = useState<
-    Array<{ fileName: string; error: string }>
-  >([]);
-
-  useEffect(() => {
-    document.body.classList.add("modal-open");
-    return () => document.body.classList.remove("modal-open");
-  }, []);
-
-  function addFiles(incoming: File[]) {
-    const map = new Map(files.map((file) => [`${file.name}-${file.size}`, file]));
-    incoming.forEach((file) => map.set(`${file.name}-${file.size}`, file));
-    setFiles([...map.values()].slice(0, 30));
-    setErrors([]);
-  }
-
-  function handleFileInput(event: ChangeEvent<HTMLInputElement>) {
-    addFiles(Array.from(event.target.files ?? []));
-    event.target.value = "";
-  }
-
-  function handleDrop(event: DragEvent<HTMLDivElement>) {
-    event.preventDefault();
-    setDragging(false);
-    addFiles(Array.from(event.dataTransfer.files));
-  }
-
-  async function upload() {
-    if (!files.length) return;
-    setUploading(true);
-    setErrors([]);
-    const formData = new FormData();
-    files.forEach((file) => formData.append("files", file));
-
-    try {
-      const response = await fetch("/api/import", {
-        method: "POST",
-        body: formData,
-      });
-      const body = (await response.json()) as {
-        results?: ImportResult[];
-        errors?: Array<{ fileName: string; error: string }>;
-        error?: string;
-      };
-      const results = body.results ?? [];
-      const importErrors = body.errors ?? [];
-
-      if (!response.ok && !results.length) {
-        if (importErrors.length) setErrors(importErrors);
-        else setErrors([{ fileName: "导入请求", error: body.error ?? "导入失败" }]);
-        return;
-      }
-
-      const importedCount = results.reduce(
-        (total, result) => total + result.imported,
-        0,
-      );
-      await onImported();
-      onToast(
-        `已导入 ${countFormatter.format(importedCount)} 条用例，${results.length} 个文件`,
-      );
-
-      if (importErrors.length) {
-        setErrors(importErrors);
-        setFiles((current) =>
-          current.filter((file) =>
-            importErrors.some((error) => error.fileName === file.name),
-          ),
-        );
-      } else {
-        onClose();
-      }
-    } catch {
-      setErrors([{ fileName: "导入请求", error: "连接中断，请重新尝试" }]);
-    } finally {
-      setUploading(false);
-    }
-  }
-
-  return (
-    <div
-      className="modal-backdrop"
-      onMouseDown={(event) => {
-        if (!uploading && event.currentTarget === event.target) onClose();
-      }}
-    >
-      <section
-        className="import-modal"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="import-title"
-      >
-        <div className="import-modal-head">
-          <div>
-            <span className="import-head-icon">
-              <ArrowDownToLine size={20} />
-            </span>
-            <div>
-              <h2 id="import-title">批量导入用例</h2>
-              <p>一次可选择最多 30 个表格或 ZIP 压缩包</p>
-            </div>
-          </div>
-          <button
-            className="icon-button"
-            type="button"
-            disabled={uploading}
-            aria-label="关闭"
-            onClick={onClose}
-          >
-            <X size={18} />
-          </button>
-        </div>
-
-        <div
-          className={classNames("dropzone", dragging && "dragging")}
-          onDragOver={(event) => {
-            event.preventDefault();
-            setDragging(true);
-          }}
-          onDragLeave={() => setDragging(false)}
-          onDrop={handleDrop}
-        >
-          <input
-            ref={inputRef}
-            type="file"
-            accept=".xlsx,.xls,.xlsb,.csv,.ods,.zip"
-            multiple
-            onChange={handleFileInput}
-          />
-          <span className="dropzone-icon">
-            <UploadCloud size={29} />
-          </span>
-          <h3>拖放表格或 ZIP 压缩包到这里</h3>
-          <p>
-            或
-            <button type="button" onClick={() => inputRef.current?.click()}>
-              浏览本机文件
-            </button>
-          </p>
-          <small>
-            支持 XLSX、XLS、XLSB、CSV、ODS、ZIP · 单文件不超过 200 MB
-          </small>
-        </div>
-
-        <div className="import-requirements">
-          <strong>导入要求</strong>
-          <span>
-            <Check size={13} /> 包含名为 data 的 Sheet
-          </span>
-          <span>
-            <Check size={13} /> 包含 CaseID 和 srNum 列
-          </span>
-          <span>
-            <Check size={13} /> ZIP 仅读取根目录和一层子目录
-          </span>
-        </div>
-
-        {files.length > 0 && (
-          <div className="selected-files">
-            <div className="selected-files-heading">
-              <strong>待导入文件</strong>
-              <span>{files.length} 个</span>
-            </div>
-            <div className="selected-files-list">
-              {files.map((file) => (
-                <div key={`${file.name}-${file.size}`}>
-                  <span>
-                    {file.name.toLocaleLowerCase("en-US").endsWith(".zip") ? (
-                      <FileArchive size={17} />
-                    ) : (
-                      <FileSpreadsheet size={17} />
-                    )}
-                  </span>
-                  <p>
-                    <strong>{file.name}</strong>
-                    <small>
-                      {file.size < 1024 * 1024
-                        ? `${Math.max(file.size / 1024, 0.1).toFixed(1)} KB`
-                        : `${(file.size / 1024 / 1024).toFixed(1)} MB`}
-                    </small>
-                  </p>
-                  {!uploading && (
-                    <button
-                      className="icon-button"
-                      type="button"
-                      aria-label={`移除 ${file.name}`}
-                      onClick={() =>
-                        setFiles((current) =>
-                          current.filter((item) => item !== file),
-                        )
-                      }
-                    >
-                      <X size={15} />
-                    </button>
-                  )}
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {errors.length > 0 && (
-          <div className="import-errors">
-            {errors.map((error) => (
-              <div key={`${error.fileName}-${error.error}`}>
-                <strong>{error.fileName}</strong>
-                <span>{error.error}</span>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {uploading && (
-          <div className="import-progress">
-            <span />
-            <p>正在本机解析并写入索引，请勿关闭窗口…</p>
-          </div>
-        )}
-
-        <div className="import-actions">
-          <button
-            className="button button-quiet"
-            type="button"
-            disabled={uploading}
-            onClick={onClose}
-          >
-            取消
-          </button>
-          <button
-            className="button button-primary"
-            type="button"
-            disabled={!files.length || uploading}
-            onClick={() => void upload()}
-          >
-            {uploading ? <RefreshCw className="spin" size={17} /> : <UploadCloud size={17} />}
-            {uploading ? "正在导入" : `开始导入${files.length ? ` (${files.length})` : ""}`}
-          </button>
-        </div>
-      </section>
-    </div>
   );
 }
 
@@ -2005,9 +2170,10 @@ function ApiGuide() {
       : `${window.location.origin}${apiPath}`;
 
   function copy(value: string, label: string) {
-    void navigator.clipboard.writeText(value);
-    setCopied(label);
-    window.setTimeout(() => setCopied(""), 1600);
+    void copyText(value).then(() => {
+      setCopied(label);
+      window.setTimeout(() => setCopied(""), 1600);
+    });
   }
 
   return (
@@ -2113,6 +2279,60 @@ function ApiGuide() {
               </code>
             </pre>
           </article>
+
+          <section className="api-client-examples">
+            <div className="api-client-examples-heading">
+              <span className="eyebrow">COPY-READY CLIENTS</span>
+              <h2>调用工具类</h2>
+              <p>
+                传入实例地址和 CaseID，成功时返回字段 Map；未查到时返回 null。
+              </p>
+            </div>
+
+            <article className="api-code-card">
+              <div className="api-code-card-heading">
+                <div>
+                  <span className="api-language-badge java">JDK 8</span>
+                  <div>
+                    <h3>Java 8 标准库客户端</h3>
+                    <p>不依赖 Jackson、Gson 或其他第三方包。</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => copy(java8ClientExample, "java8")}
+                >
+                  {copied === "java8" ? <Check size={14} /> : <Copy size={14} />}
+                  {copied === "java8" ? "已复制" : "复制代码"}
+                </button>
+              </div>
+              <pre className="api-client-code">
+                <code>{java8ClientExample}</code>
+              </pre>
+            </article>
+
+            <article className="api-code-card">
+              <div className="api-code-card-heading">
+                <div>
+                  <span className="api-language-badge groovy">Groovy</span>
+                  <div>
+                    <h3>Groovy 调用客户端</h3>
+                    <p>适用于 Groovy 2.4+，使用内置 JsonSlurper。</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => copy(groovyClientExample, "groovy")}
+                >
+                  {copied === "groovy" ? <Check size={14} /> : <Copy size={14} />}
+                  {copied === "groovy" ? "已复制" : "复制代码"}
+                </button>
+              </div>
+              <pre className="api-client-code">
+                <code>{groovyClientExample}</code>
+              </pre>
+            </article>
+          </section>
         </div>
 
         <aside className="api-doc-aside">

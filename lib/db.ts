@@ -1,5 +1,15 @@
 import Database from "better-sqlite3";
-import { mkdirSync } from "node:fs";
+import {
+  existsSync,
+  closeSync,
+  mkdirSync,
+  openSync,
+  readFileSync,
+  readSync,
+  renameSync,
+  unlinkSync,
+} from "node:fs";
+import { createHash } from "node:crypto";
 import path from "node:path";
 
 const dataDirectory = process.env.DDT_DATA_DIR
@@ -9,10 +19,174 @@ const dataDirectory = process.env.DDT_DATA_DIR
 mkdirSync(dataDirectory, { recursive: true });
 
 const databasePath = path.join(dataDirectory, "ddt-insight.sqlite");
+const pendingRestorePath = path.join(
+  dataDirectory,
+  ".ddt-insight.restore-pending.sqlite",
+);
+const pendingSecretPath = path.join(
+  dataDirectory,
+  ".session-secret.restore-pending",
+);
+const pendingRestoreMarkerPath = path.join(
+  dataDirectory,
+  ".restore-pending.json",
+);
+
+function fileSha256(filePath: string) {
+  const hash = createHash("sha256");
+  const descriptor = openSync(filePath, "r");
+  const buffer = Buffer.allocUnsafe(1024 * 1024);
+  try {
+    let bytesRead = 0;
+    do {
+      bytesRead = readSync(
+        descriptor,
+        buffer,
+        0,
+        buffer.length,
+        null,
+      );
+      if (bytesRead) hash.update(buffer.subarray(0, bytesRead));
+    } while (bytesRead);
+  } finally {
+    closeSync(descriptor);
+  }
+  return hash.digest("hex");
+}
 
 const globalForDatabase = globalThis as unknown as {
   ddtInsightDatabase?: Database.Database;
 };
+
+/**
+ * A restore is staged by the maintenance API and activated before SQLite is
+ * opened on the next process start. This avoids replacing a live database
+ * underneath prepared statements and gives every restore a recoverable,
+ * pre-restore copy.
+ */
+function activatePendingRestore() {
+  if (!existsSync(pendingRestoreMarkerPath)) return;
+
+  try {
+    const marker = JSON.parse(
+      readFileSync(pendingRestoreMarkerPath, "utf8"),
+    ) as {
+      databaseSha256?: string;
+      secretSha256?: string;
+      stagedAt?: string;
+    };
+    if (!marker.databaseSha256) return;
+
+    const suffix = (marker.stagedAt ?? new Date().toISOString())
+      .replace(/[:.]/g, "-");
+    const recoveryBase = path.join(
+      dataDirectory,
+      `.pre-restore-${suffix}`,
+    );
+    const recoveryDatabase = `${recoveryBase}.sqlite`;
+    const rollBackDatabaseActivation = () => {
+      if (
+        !existsSync(databasePath) ||
+        fileSha256(databasePath) !== marker.databaseSha256 ||
+        !existsSync(recoveryDatabase)
+      ) {
+        return;
+      }
+      if (existsSync(pendingRestorePath)) unlinkSync(pendingRestorePath);
+      renameSync(databasePath, pendingRestorePath);
+      renameSync(recoveryDatabase, databasePath);
+      for (const extension of ["-wal", "-shm"]) {
+        const current = `${databasePath}${extension}`;
+        const recovery = `${recoveryDatabase}${extension}`;
+        if (!existsSync(current) && existsSync(recovery)) {
+          renameSync(recovery, current);
+        }
+      }
+    };
+    const databaseAlreadyActivated =
+      existsSync(databasePath) &&
+      fileSha256(databasePath) === marker.databaseSha256;
+
+    if (!databaseAlreadyActivated) {
+      if (
+        !existsSync(pendingRestorePath) ||
+        fileSha256(pendingRestorePath) !== marker.databaseSha256
+      ) {
+        return;
+      }
+
+      if (existsSync(databasePath) && !existsSync(recoveryDatabase)) {
+        renameSync(databasePath, recoveryDatabase);
+      }
+      for (const extension of ["-wal", "-shm"]) {
+        const current = `${databasePath}${extension}`;
+        const recovery = `${recoveryDatabase}${extension}`;
+        if (existsSync(current) && !existsSync(recovery)) {
+          renameSync(current, recovery);
+        }
+      }
+
+      try {
+        renameSync(pendingRestorePath, databasePath);
+      } catch {
+        // Roll back a partially started activation so SQLite is never opened
+        // against an empty path if the staged rename unexpectedly fails.
+        if (!existsSync(databasePath) && existsSync(recoveryDatabase)) {
+          renameSync(recoveryDatabase, databasePath);
+        }
+        for (const extension of ["-wal", "-shm"]) {
+          const current = `${databasePath}${extension}`;
+          const recovery = `${recoveryDatabase}${extension}`;
+          if (!existsSync(current) && existsSync(recovery)) {
+            renameSync(recovery, current);
+          }
+        }
+        return;
+      }
+    } else if (existsSync(pendingRestorePath)) {
+      // A crash may happen after the atomic database rename but before the
+      // marker is removed. The current hash proves activation already won.
+      unlinkSync(pendingRestorePath);
+    }
+
+    if (marker.secretSha256) {
+      const currentSecret = path.join(dataDirectory, ".session-secret");
+      const secretAlreadyActivated =
+        existsSync(currentSecret) &&
+        fileSha256(currentSecret) === marker.secretSha256;
+      if (!secretAlreadyActivated) {
+        if (
+          !existsSync(pendingSecretPath) ||
+          fileSha256(pendingSecretPath) !== marker.secretSha256
+        ) {
+          rollBackDatabaseActivation();
+          return;
+        }
+        const recoverySecret = `${recoveryBase}.session-secret`;
+        if (existsSync(currentSecret) && !existsSync(recoverySecret)) {
+          renameSync(currentSecret, recoverySecret);
+        }
+        try {
+          renameSync(pendingSecretPath, currentSecret);
+        } catch {
+          if (!existsSync(currentSecret) && existsSync(recoverySecret)) {
+            renameSync(recoverySecret, currentSecret);
+          }
+          rollBackDatabaseActivation();
+          return;
+        }
+      } else if (existsSync(pendingSecretPath)) {
+        unlinkSync(pendingSecretPath);
+      }
+    }
+    unlinkSync(pendingRestoreMarkerPath);
+  } catch {
+    // Leave the staged files in place. Diagnostics exposes the pending state
+    // so an administrator can retry or inspect it without losing live data.
+  }
+}
+
+if (!globalForDatabase.ddtInsightDatabase) activatePendingRestore();
 
 function createDatabase() {
   const database = new Database(databasePath);
@@ -73,6 +247,8 @@ function createDatabase() {
       id TEXT PRIMARY KEY,
       username TEXT NOT NULL UNIQUE COLLATE NOCASE,
       display_name TEXT NOT NULL,
+      email TEXT NOT NULL DEFAULT '',
+      groups_json TEXT NOT NULL DEFAULT '[]',
       provider TEXT NOT NULL CHECK (provider IN ('local', 'ldap')),
       role TEXT NOT NULL CHECK (role IN ('admin', 'editor')),
       enabled INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0, 1)),
@@ -94,6 +270,8 @@ function createDatabase() {
       user_base_dn TEXT NOT NULL DEFAULT '',
       user_filter TEXT NOT NULL DEFAULT '(uid={{username}})',
       display_name_attribute TEXT NOT NULL DEFAULT 'displayName',
+      mail_attribute TEXT NOT NULL DEFAULT 'mail',
+      group_attribute TEXT NOT NULL DEFAULT 'memberOf',
       default_role TEXT NOT NULL DEFAULT 'editor'
         CHECK (default_role IN ('admin', 'editor')),
       tls_reject_unauthorized INTEGER NOT NULL DEFAULT 1
@@ -126,6 +304,36 @@ function createDatabase() {
     CREATE INDEX IF NOT EXISTS idx_audit_action
       ON audit_logs (action, created_at DESC);
   `);
+
+  const userColumns = database
+    .prepare("PRAGMA table_info(users)")
+    .all() as Array<{ name: string }>;
+  if (!userColumns.some((column) => column.name === "email")) {
+    database.exec(
+      "ALTER TABLE users ADD COLUMN email TEXT NOT NULL DEFAULT ''",
+    );
+  }
+  if (!userColumns.some((column) => column.name === "groups_json")) {
+    database.exec(
+      "ALTER TABLE users ADD COLUMN groups_json TEXT NOT NULL DEFAULT '[]'",
+    );
+  }
+
+  const ldapColumns = database
+    .prepare("PRAGMA table_info(ldap_config)")
+    .all() as Array<{ name: string }>;
+  if (!ldapColumns.some((column) => column.name === "mail_attribute")) {
+    database.exec(`
+      ALTER TABLE ldap_config
+      ADD COLUMN mail_attribute TEXT NOT NULL DEFAULT 'mail'
+    `);
+  }
+  if (!ldapColumns.some((column) => column.name === "group_attribute")) {
+    database.exec(`
+      ALTER TABLE ldap_config
+      ADD COLUMN group_attribute TEXT NOT NULL DEFAULT 'memberOf'
+    `);
+  }
 
   const caseColumns = database
     .prepare("PRAGMA table_info(cases)")
@@ -162,6 +370,30 @@ function createDatabase() {
       ON case_history (case_record_id, id DESC);
     CREATE INDEX IF NOT EXISTS idx_case_history_case_id
       ON case_history (case_id COLLATE NOCASE, id DESC);
+
+    CREATE TABLE IF NOT EXISTS deleted_cases (
+      id TEXT PRIMARY KEY,
+      case_record_id TEXT NOT NULL,
+      case_id TEXT NOT NULL COLLATE NOCASE,
+      sr_num TEXT NOT NULL COLLATE NOCASE,
+      data_json TEXT NOT NULL,
+      source_file_id TEXT NOT NULL,
+      source_name TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      deleted_at TEXT NOT NULL,
+      deleted_by_user_id TEXT NOT NULL DEFAULT '',
+      deleted_by_username TEXT NOT NULL,
+      deleted_by_display_name TEXT NOT NULL DEFAULT '',
+      deleted_by_provider TEXT NOT NULL DEFAULT ''
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_deleted_cases_deleted_at
+      ON deleted_cases (deleted_at DESC, id);
+    CREATE INDEX IF NOT EXISTS idx_deleted_cases_case_id
+      ON deleted_cases (case_id COLLATE NOCASE, deleted_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_deleted_cases_sr_num
+      ON deleted_cases (sr_num COLLATE NOCASE, deleted_at DESC);
   `);
 
   const auditColumns = database
@@ -199,4 +431,10 @@ if (process.env.NODE_ENV !== "production") {
   globalForDatabase.ddtInsightDatabase = db;
 }
 
-export { dataDirectory, databasePath };
+export {
+  dataDirectory,
+  databasePath,
+  pendingRestoreMarkerPath,
+  pendingRestorePath,
+  pendingSecretPath,
+};

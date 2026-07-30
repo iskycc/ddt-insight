@@ -53,6 +53,8 @@ export async function POST(request: NextRequest) {
     ok: true,
     username: user.username,
     displayName: user.displayName,
+    email: user.email,
+    groups: user.groups,
     role: user.role,
     provider: user.provider,
   });

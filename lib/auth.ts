@@ -98,6 +98,8 @@ export async function getSession() {
   return {
     ...payload,
     displayName: user.displayName,
+    email: user.email,
+    groups: user.groups,
   };
 }
 

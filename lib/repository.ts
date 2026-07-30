@@ -356,26 +356,265 @@ export function updateCaseColumn(
   return next;
 }
 
-export function deleteCase(caseId: string) {
+type CaseActor = Pick<
+  AuthSession,
+  "userId" | "username" | "displayName" | "provider"
+>;
+
+export interface DeletedCaseRecord {
+  recycleId: string;
+  caseId: string;
+  srNum: string;
+  sourceName: string;
+  deletedAt: string;
+}
+
+function moveCaseToRecycleBin(caseId: string, actor: CaseActor) {
   const existing = db
     .prepare(`
       SELECT
+        record_id AS recordId,
         case_id AS caseId,
         sr_num AS srNum,
-        source_name AS sourceName
+        data_json AS dataJson,
+        source_file_id AS sourceFileId,
+        source_name AS sourceName,
+        created_at AS createdAt,
+        updated_at AS updatedAt
       FROM cases
       WHERE case_id = ?
       LIMIT 1
     `)
     .get(caseId) as
-    | { caseId: string; srNum: string; sourceName: string }
+    | {
+        recordId: string;
+        caseId: string;
+        srNum: string;
+        dataJson: string;
+        sourceFileId: string;
+        sourceName: string;
+        createdAt: string;
+        updatedAt: string;
+      }
     | undefined;
 
   if (!existing) return null;
 
+  const recycleId = randomUUID();
+  const deletedAt = new Date().toISOString();
+  db.prepare(`
+    INSERT INTO deleted_cases (
+      id, case_record_id, case_id, sr_num, data_json,
+      source_file_id, source_name, created_at, updated_at,
+      deleted_at, deleted_by_user_id, deleted_by_username,
+      deleted_by_display_name, deleted_by_provider
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    recycleId,
+    existing.recordId,
+    existing.caseId,
+    existing.srNum,
+    existing.dataJson,
+    existing.sourceFileId,
+    existing.sourceName,
+    existing.createdAt,
+    existing.updatedAt,
+    deletedAt,
+    actor.userId,
+    actor.username.slice(0, 128),
+    actor.displayName.slice(0, 128),
+    actor.provider,
+  );
   db.prepare("DELETE FROM cases WHERE case_id = ?").run(caseId);
   invalidateCaseCache(caseId);
-  return existing;
+  return {
+    recycleId,
+    caseId: existing.caseId,
+    srNum: existing.srNum,
+    sourceName: existing.sourceName,
+    deletedAt,
+  } satisfies DeletedCaseRecord;
+}
+
+export function deleteCase(
+  caseId: string,
+  actor: CaseActor,
+  onDeleted?: (deleted: DeletedCaseRecord) => void,
+) {
+  return db.transaction(() => {
+    const deleted = moveCaseToRecycleBin(caseId, actor);
+    if (deleted) onDeleted?.(deleted);
+    return deleted;
+  })();
+}
+
+export function trashCases(caseIds: string[], actor: CaseActor) {
+  const uniqueIds = [
+    ...new Map(
+      caseIds
+        .map((caseId) => caseId.trim())
+        .filter(Boolean)
+        .map((caseId) => [caseId.toLocaleLowerCase("en-US"), caseId]),
+    ).values(),
+  ].slice(0, 1_000);
+
+  return db.transaction(() => {
+    const deleted: DeletedCaseRecord[] = [];
+    const notFound: string[] = [];
+    for (const caseId of uniqueIds) {
+      const result = moveCaseToRecycleBin(caseId, actor);
+      if (result) deleted.push(result);
+      else notFound.push(caseId);
+    }
+    return { deleted, notFound };
+  })();
+}
+
+export function listDeletedCases(options: {
+  query?: string;
+  limit?: number;
+  offset?: number;
+}) {
+  const query = options.query?.trim() ?? "";
+  const limit = Math.min(Math.max(options.limit ?? 30, 1), 100);
+  const offset = Math.max(options.offset ?? 0, 0);
+  const where = query
+    ? `WHERE case_id LIKE ? ESCAPE '\\'
+        OR sr_num LIKE ? ESCAPE '\\'
+        OR deleted_by_username LIKE ? ESCAPE '\\'`
+    : "";
+  const escaped = `%${escapeLike(query)}%`;
+  const parameters = query ? [escaped, escaped, escaped] : [];
+  const rows = db
+    .prepare(`
+      SELECT
+        id,
+        case_id AS caseId,
+        sr_num AS srNum,
+        source_name AS sourceName,
+        updated_at AS updatedAt,
+        deleted_at AS deletedAt,
+        deleted_by_username AS deletedByUsername,
+        deleted_by_display_name AS deletedByDisplayName,
+        deleted_by_provider AS deletedByProvider
+      FROM deleted_cases
+      ${where}
+      ORDER BY deleted_at DESC, id DESC
+      LIMIT ? OFFSET ?
+    `)
+    .all(...parameters, limit + 1, offset) as Array<{
+    id: string;
+    caseId: string;
+    srNum: string;
+    sourceName: string;
+    updatedAt: string;
+    deletedAt: string;
+    deletedByUsername: string;
+    deletedByDisplayName: string;
+    deletedByProvider: string;
+  }>;
+
+  return {
+    items: rows.slice(0, limit),
+    hasMore: rows.length > limit,
+    offset,
+    limit,
+  };
+}
+
+export function restoreDeletedCase(recycleId: string) {
+  return db.transaction(() => {
+    const deleted = db
+      .prepare(`
+        SELECT
+          id,
+          case_record_id AS recordId,
+          case_id AS caseId,
+          sr_num AS srNum,
+          data_json AS dataJson,
+          source_file_id AS sourceFileId,
+          source_name AS sourceName,
+          created_at AS createdAt,
+          updated_at AS updatedAt
+        FROM deleted_cases
+        WHERE id = ?
+        LIMIT 1
+      `)
+      .get(recycleId) as
+      | {
+          id: string;
+          recordId: string;
+          caseId: string;
+          srNum: string;
+          dataJson: string;
+          sourceFileId: string;
+          sourceName: string;
+          createdAt: string;
+          updatedAt: string;
+        }
+      | undefined;
+    if (!deleted) return null;
+
+    const conflict = db
+      .prepare(`
+        SELECT case_id AS caseId
+        FROM cases
+        WHERE case_id = ? COLLATE NOCASE OR record_id = ?
+        LIMIT 1
+      `)
+      .get(deleted.caseId, deleted.recordId) as
+      | { caseId: string }
+      | undefined;
+    if (conflict) {
+      throw new Error(`CaseID “${conflict.caseId}”已存在，无法恢复`);
+    }
+
+    const restoredAt = new Date().toISOString();
+    db.prepare(`
+      INSERT INTO cases (
+        case_id, record_id, sr_num, data_json, source_file_id, source_name,
+        created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      deleted.caseId,
+      deleted.recordId,
+      deleted.srNum,
+      deleted.dataJson,
+      deleted.sourceFileId,
+      deleted.sourceName,
+      deleted.createdAt,
+      restoredAt,
+    );
+    db.prepare("DELETE FROM deleted_cases WHERE id = ?").run(recycleId);
+    db.prepare(`
+      INSERT INTO activity (kind, detail, amount, created_at)
+      VALUES ('restore', ?, 1, ?)
+    `).run(deleted.caseId, restoredAt);
+    invalidateCaseCache(deleted.caseId);
+
+    return {
+      recycleId,
+      caseId: deleted.caseId,
+      srNum: deleted.srNum,
+      sourceName: deleted.sourceName,
+      restoredAt,
+    };
+  })();
+}
+
+export function purgeDeletedCase(recycleId: string) {
+  const existing = db
+    .prepare(`
+      SELECT case_id AS caseId, sr_num AS srNum
+      FROM deleted_cases
+      WHERE id = ?
+      LIMIT 1
+    `)
+    .get(recycleId) as { caseId: string; srNum: string } | undefined;
+  if (!existing) return null;
+
+  db.prepare("DELETE FROM deleted_cases WHERE id = ?").run(recycleId);
+  return { recycleId, ...existing };
 }
 
 export function getCasesForExport(options: {

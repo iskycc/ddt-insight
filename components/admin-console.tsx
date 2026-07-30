@@ -69,6 +69,11 @@ function localDate(value: string | null) {
   }).format(new Date(value));
 }
 
+function ldapGroupLabel(group: string) {
+  const commonName = /^cn=([^,]+)/i.exec(group)?.[1];
+  return commonName || group;
+}
+
 export function UserManagement({
   currentUserId,
   onToast,
@@ -228,6 +233,7 @@ export function UserManagement({
         <div className="admin-table user-table">
           <div className="admin-table-head">
             <span>用户</span>
+            <span>目录信息</span>
             <span>来源</span>
             <span>角色</span>
             <span>最后登录</span>
@@ -251,6 +257,32 @@ export function UserManagement({
                     </strong>
                     <small>{user.username}</small>
                   </p>
+                </span>
+                <span className="directory-profile">
+                  {user.provider === "ldap" ? (
+                    <>
+                      <strong title={user.email || "LDAP 未返回邮箱"}>
+                        {user.email || "未获取 mail"}
+                      </strong>
+                      <small title={user.groups.join("\n")}>
+                        {user.groups.length
+                          ? `${user.groups
+                              .slice(0, 2)
+                              .map(ldapGroupLabel)
+                              .join(" · ")}${
+                              user.groups.length > 2
+                                ? ` 等 ${user.groups.length} 个 Group`
+                                : ""
+                            }`
+                          : "未获取 Group"}
+                      </small>
+                    </>
+                  ) : (
+                    <>
+                      <strong>本地账户</strong>
+                      <small>不从目录同步属性</small>
+                    </>
+                  )}
                 </span>
                 <span>
                   <em className={`provider-pill ${user.provider}`}>
@@ -523,6 +555,8 @@ const emptyLdapConfig: LdapConfigPublic = {
   userBaseDn: "",
   userFilter: "(uid={{username}})",
   displayNameAttribute: "displayName",
+  mailAttribute: "mail",
+  groupAttribute: "memberOf",
   defaultRole: "editor",
   tlsRejectUnauthorized: true,
   connectTimeoutMs: 5000,
@@ -784,6 +818,30 @@ export function LdapSettings({ onToast }: { onToast: ToastHandler }) {
                 }
                 placeholder="displayName"
               />
+            </label>
+          </div>
+          <div className="form-grid two">
+            <label>
+              <span>邮箱属性</span>
+              <input
+                value={config.mailAttribute}
+                onChange={(event) =>
+                  field("mailAttribute", event.target.value)
+                }
+                placeholder="mail"
+              />
+              <small>留空则不读取邮箱；常见属性为 mail。</small>
+            </label>
+            <label>
+              <span>Group 属性（多值）</span>
+              <input
+                value={config.groupAttribute}
+                onChange={(event) =>
+                  field("groupAttribute", event.target.value)
+                }
+                placeholder="memberOf"
+              />
+              <small>读取用户条目的组成员属性；AD 通常使用 memberOf。</small>
             </label>
           </div>
           <div className="admin-field">

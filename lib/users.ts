@@ -7,6 +7,8 @@ interface UserRow {
   id: string;
   username: string;
   display_name: string;
+  email: string;
+  groups_json: string;
   provider: "local" | "ldap";
   role: UserRole;
   enabled: number;
@@ -16,11 +18,23 @@ interface UserRow {
   updated_at: string;
 }
 
+function parseGroups(value: string) {
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((item): item is string => typeof item === "string");
+  } catch {
+    return [];
+  }
+}
+
 function toRecord(row: UserRow): UserRecord {
   return {
     id: row.id,
     username: row.username,
     displayName: row.display_name,
+    email: row.email,
+    groups: parseGroups(row.groups_json),
     provider: row.provider,
     role: row.role,
     enabled: Boolean(row.enabled),
@@ -66,7 +80,8 @@ export function listUsers() {
   return (
     db
       .prepare(`
-        SELECT id, username, display_name, provider, role, enabled,
+        SELECT id, username, display_name, email, groups_json,
+               provider, role, enabled,
                password_hash, last_login_at, created_at, updated_at
         FROM users
         ORDER BY
@@ -81,7 +96,8 @@ export function findUserById(id: string) {
   ensureBootstrapAdmin();
   const row = db
     .prepare(`
-      SELECT id, username, display_name, provider, role, enabled,
+      SELECT id, username, display_name, email, groups_json,
+             provider, role, enabled,
              password_hash, last_login_at, created_at, updated_at
       FROM users WHERE id = ? LIMIT 1
     `)
@@ -93,7 +109,8 @@ export function findUserForAuthentication(username: string) {
   ensureBootstrapAdmin();
   return db
     .prepare(`
-      SELECT id, username, display_name, provider, role, enabled,
+      SELECT id, username, display_name, email, groups_json,
+             provider, role, enabled,
              password_hash, last_login_at, created_at, updated_at
       FROM users WHERE username = ? COLLATE NOCASE LIMIT 1
     `)
@@ -159,11 +176,23 @@ export function createLocalUser(input: {
 export function upsertLdapUser(input: {
   username: string;
   displayName: string;
+  email: string;
+  groups: string[];
   defaultRole: UserRole;
 }) {
   const username = validateUsername(input.username);
   const existing = findUserForAuthentication(username);
   const now = new Date().toISOString();
+  const displayName = (input.displayName.trim() || username).slice(0, 128);
+  const email = input.email.trim().slice(0, 320);
+  const groups = [
+    ...new Set(
+      input.groups
+        .map((group) => group.trim().slice(0, 2048))
+        .filter(Boolean),
+    ),
+  ].slice(0, 512);
+  const groupsJson = JSON.stringify(groups);
 
   if (existing) {
     if (existing.provider !== "ldap") {
@@ -171,22 +200,27 @@ export function upsertLdapUser(input: {
     }
     if (!existing.enabled) throw new Error("该账户已被停用");
     db.prepare(`
-      UPDATE users SET display_name = ?, last_login_at = ?, updated_at = ?
+      UPDATE users
+      SET display_name = ?, email = ?, groups_json = ?,
+          last_login_at = ?, updated_at = ?
       WHERE id = ?
-    `).run(input.displayName || username, now, now, existing.id);
+    `).run(displayName, email, groupsJson, now, now, existing.id);
     return findUserById(existing.id)!;
   }
 
   const id = randomUUID();
   db.prepare(`
     INSERT INTO users (
-      id, username, display_name, provider, role, enabled,
+      id, username, display_name, email, groups_json,
+      provider, role, enabled,
       password_hash, last_login_at, created_at, updated_at
-    ) VALUES (?, ?, ?, 'ldap', ?, 1, NULL, ?, ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, 'ldap', ?, 1, NULL, ?, ?, ?)
   `).run(
     id,
     username,
-    input.displayName || username,
+    displayName,
+    email,
+    groupsJson,
     input.defaultRole,
     now,
     now,

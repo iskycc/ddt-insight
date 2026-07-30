@@ -64,6 +64,8 @@ export interface UserRecord {
   id: string;
   username: string;
   displayName: string;
+  email: string;
+  groups: string[];
   provider: UserProvider;
   role: UserRole;
   enabled: boolean;
@@ -89,6 +91,8 @@ export interface LdapConfigPublic {
   userBaseDn: string;
   userFilter: string;
   displayNameAttribute: string;
+  mailAttribute: string;
+  groupAttribute: string;
   defaultRole: UserRole;
   tlsRejectUnauthorized: boolean;
   connectTimeoutMs: number;
