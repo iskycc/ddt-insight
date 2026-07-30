@@ -16,6 +16,7 @@ import {
   Download,
   ExternalLink,
   File,
+  FileArchive,
   FileSpreadsheet,
   Gauge,
   LayoutGrid,
@@ -965,7 +966,7 @@ function ImportModal({
             </span>
             <div>
               <h2 id="import-title">批量导入用例</h2>
-              <p>一次可选择最多 30 个表格文件</p>
+              <p>一次可选择最多 30 个表格或 ZIP 压缩包</p>
             </div>
           </div>
           <button
@@ -991,21 +992,23 @@ function ImportModal({
           <input
             ref={inputRef}
             type="file"
-            accept=".xlsx,.xls,.xlsb,.csv,.ods"
+            accept=".xlsx,.xls,.xlsb,.csv,.ods,.zip"
             multiple
             onChange={handleFileInput}
           />
           <span className="dropzone-icon">
             <UploadCloud size={29} />
           </span>
-          <h3>拖放表格到这里</h3>
+          <h3>拖放表格或 ZIP 压缩包到这里</h3>
           <p>
             或
             <button type="button" onClick={() => inputRef.current?.click()}>
               浏览本机文件
             </button>
           </p>
-          <small>支持 XLSX、XLS、XLSB、CSV、ODS · 单文件不超过 200 MB</small>
+          <small>
+            支持 XLSX、XLS、XLSB、CSV、ODS、ZIP · 单文件不超过 200 MB
+          </small>
         </div>
 
         <div className="import-requirements">
@@ -1015,6 +1018,9 @@ function ImportModal({
           </span>
           <span>
             <Check size={13} /> 包含 CaseID 和 srNum 列
+          </span>
+          <span>
+            <Check size={13} /> ZIP 仅读取根目录和一层子目录
           </span>
         </div>
 
@@ -1028,7 +1034,11 @@ function ImportModal({
               {files.map((file) => (
                 <div key={`${file.name}-${file.size}`}>
                   <span>
-                    <FileSpreadsheet size={17} />
+                    {file.name.toLocaleLowerCase("en-US").endsWith(".zip") ? (
+                      <FileArchive size={17} />
+                    ) : (
+                      <FileSpreadsheet size={17} />
+                    )}
                   </span>
                   <p>
                     <strong>{file.name}</strong>

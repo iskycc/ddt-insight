@@ -15,6 +15,10 @@ function extensionOf(fileName: string) {
   return extension ?? "";
 }
 
+export function isSupportedSpreadsheetFile(fileName: string) {
+  return SUPPORTED_EXTENSIONS.has(extensionOf(fileName));
+}
+
 function normalizeCell(value: unknown): CellValue {
   if (value === null || value === undefined) return "";
   if (typeof value === "string") return value;
@@ -30,7 +34,7 @@ export function parseAndImportSpreadsheet(
   const startedAt = Date.now();
   const extension = extensionOf(fileName);
 
-  if (!SUPPORTED_EXTENSIONS.has(extension)) {
+  if (!isSupportedSpreadsheetFile(fileName)) {
     throw new Error(
       "不支持该文件格式。请使用 .xlsx、.xls、.xlsb、.csv 或 .ods 文件",
     );

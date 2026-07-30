@@ -4,7 +4,7 @@ DDT Insight 是一个完全离线运行的用例数据管理平台。前端和�
 
 ## 已实现能力
 
-- 多文件批量导入，支持 XLSX、XLS、XLSB、CSV、ODS
+- 多文件及 ZIP 压缩包批量导入，支持 XLSX、XLS、XLSB、CSV、ODS
 - 从 `data` Sheet 读取动态列结构
 - 以 `CaseID` 作为全局唯一索引；重复导入时更新同一用例
 - 按 `srNum` 自动聚合用例组
@@ -14,6 +14,7 @@ DDT Insight 是一个完全离线运行的用例数据管理平台。前端和�
 - 导出当前用例、指定 srNum 分组或全部用例
 - 无鉴权开放查询 API，支持 CORS
 - 公开统计大盘与管理员工作台
+- 响应式适配移动端、普通桌面、2K 与 4K 大尺寸屏幕
 - 本机系统字体、本地图标、无 CDN、无远程字体、无远程图片
 
 ## 开始运行
@@ -45,7 +46,7 @@ npm run dev
 | data Sheet | 导入解析器 | 非 CSV 文件缺少 data Sheet 时明确报错 |
 | CaseID 唯一索引 | SQLite 主键 | 重复导入执行更新，冲突改名被拒绝 |
 | srNum 分组 | 组合索引与分组查询 | 相同 srNum 的跨文件用例归入同组 |
-| 批量导入 | `/api/import` | 单次最多选择 30 个文件，逐文件返回结果 |
+| 批量导入 | `/api/import` | 单次最多导入 30 个表格；支持多文件或 ZIP 根目录/一层子目录 |
 | 导出 | `/api/export` | 支持当前用例、srNum 分组和全部用例 |
 | 任意字段修改 | 字段卡片与 PATCH API | 普通字段、srNum、CaseID 均可编辑 |
 | 大数据按 CaseID 切换 | 分页列表与详情面板 | 前端每页最多读取 60 个索引项，只展示一个详情 |
@@ -65,6 +66,8 @@ npm run dev
 5. 同一文件内不能出现重复 CaseID。
 
 除 `CaseID` 和 `srNum` 外，其余列可以任意增减，不同文件无需保持一致。
+
+批量导入还支持 `.zip` 压缩包。系统只读取压缩包根目录中的表格，以及根目录下一层文件夹中的表格；更深层级的文件会被忽略。如果这两个层级均没有支持的表格，则整个压缩包不会执行导入。单次展开后最多导入 30 个表格，并限制单个表格及解压后表格总大小。
 
 ## 开放 API
 
@@ -222,6 +225,7 @@ gzip -dc ddt-insight-1.0.2-linux-arm64.tar.gz | docker load
 | `DDT_DATA_DIR` | `./data` | 数据库存储目录 |
 | `COOKIE_SECURE` | `false` | 仅在 HTTPS 部署时设为 `true` |
 | `MAX_IMPORT_MB` | `200` | 单个导入文件的大小上限 |
+| `MAX_ARCHIVE_UNCOMPRESSED_MB` | `200` | ZIP 解压后全部表格的总大小上限 |
 | `PORT` | `3000` | 服务端口 |
 | `HOSTNAME` | `0.0.0.0` | 监听地址 |
 | `DDT_PORT` | `3000` | Compose 暴露到宿主机的端口 |

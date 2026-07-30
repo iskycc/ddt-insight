@@ -16,6 +16,7 @@ services:
       ADMIN_PASSWORD: "${ADMIN_PASSWORD:-insight-admin}"
       COOKIE_SECURE: "${COOKIE_SECURE:-false}"
       MAX_IMPORT_MB: "${MAX_IMPORT_MB:-200}"
+      MAX_ARCHIVE_UNCOMPRESSED_MB: "${MAX_ARCHIVE_UNCOMPRESSED_MB:-200}"
     volumes:
       - ./data:/app/data
     healthcheck:
