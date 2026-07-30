@@ -32,7 +32,7 @@ import {
 import styles from "@/components/maintenance-center.module.css";
 
 type ToastHandler = (message: string) => void;
-type CenterTab = "backup" | "diagnostics" | "recycle";
+export type MaintenanceSection = "backup" | "diagnostics" | "recycle";
 
 type BackupItem = {
   id: string;
@@ -140,13 +140,14 @@ async function responseError(response: Response, fallback: string) {
 }
 
 export function MaintenanceCenter({
+  section,
   onToast,
   onCasesChanged,
 }: {
+  section: MaintenanceSection;
   onToast: ToastHandler;
   onCasesChanged?: () => void;
 }) {
-  const [tab, setTab] = useState<CenterTab>("backup");
   const [diagnostics, setDiagnostics] = useState<Diagnostics | null>(null);
   const [backups, setBackups] = useState<BackupItem[]>([]);
   const [deletedCases, setDeletedCases] = useState<DeletedCase[]>([]);
@@ -213,7 +214,13 @@ export function MaintenanceCenter({
     setLoading(true);
     setError("");
     try {
-      await Promise.all([loadDiagnostics(), loadBackups(), loadRecycle()]);
+      if (section === "backup") {
+        await Promise.all([loadDiagnostics(), loadBackups()]);
+      } else if (section === "diagnostics") {
+        await loadDiagnostics();
+      } else {
+        await loadRecycle();
+      }
     } catch (loadError) {
       setError(
         loadError instanceof Error ? loadError.message : "读取运维信息失败",
@@ -221,7 +228,7 @@ export function MaintenanceCenter({
     } finally {
       setLoading(false);
     }
-  }, [loadBackups, loadDiagnostics, loadRecycle]);
+  }, [loadBackups, loadDiagnostics, loadRecycle, section]);
 
   useEffect(() => {
     void refresh();
@@ -377,7 +384,6 @@ export function MaintenanceCenter({
       );
       onToast(`已从回收站恢复 ${item.caseId}`);
       onCasesChanged?.();
-      await loadDiagnostics();
     } catch (restoreError) {
       setError(
         restoreError instanceof Error ? restoreError.message : "恢复用例失败",
@@ -402,7 +408,6 @@ export function MaintenanceCenter({
       );
       setConfirmAction(null);
       onToast(`已彻底删除 ${item.caseId}，修改历史仍永久保留`);
-      await loadDiagnostics();
     } catch (purgeError) {
       setError(
         purgeError instanceof Error ? purgeError.message : "彻底删除失败",
@@ -434,14 +439,34 @@ export function MaintenanceCenter({
         ),
       )
     : 0;
+  const pageCopy = {
+    backup: {
+      eyebrow: "DATA PROTECTION",
+      title: "备份与恢复",
+      description:
+        "创建离线加密备份，校验恢复文件，并安全暂存等待重启的数据恢复任务。",
+    },
+    diagnostics: {
+      eyebrow: "SYSTEM HEALTH",
+      title: "系统信息",
+      description:
+        "查看运行版本、存储容量、SQLite 完整性和 WAL 检查点状态。",
+    },
+    recycle: {
+      eyebrow: "RECOVERY",
+      title: "回收站",
+      description:
+        "检索、恢复或彻底删除误删用例，同时永久保留既有修改历史。",
+    },
+  }[section];
 
   return (
     <div className={`${styles.center} workspace-page admin-page`}>
       <div className={styles.heading}>
         <div>
-          <span className="eyebrow">RESILIENCE & OPERATIONS</span>
-          <h1>备份与运维中心</h1>
-          <p>保护离线数据、恢复误删用例，并持续检查存储和 SQLite 健康状态。</p>
+          <span className="eyebrow">{pageCopy.eyebrow}</span>
+          <h1>{pageCopy.title}</h1>
+          <p>{pageCopy.description}</p>
         </div>
         <button
           className="button button-quiet button-small"
@@ -454,29 +479,6 @@ export function MaintenanceCenter({
         </button>
       </div>
 
-      <div className={styles.tabs} role="tablist" aria-label="运维中心栏目">
-        {[
-          { value: "backup" as const, label: "备份与恢复", icon: Archive },
-          { value: "diagnostics" as const, label: "存储与诊断", icon: Gauge },
-          { value: "recycle" as const, label: "回收站", icon: Trash2 },
-        ].map((item) => (
-          <button
-            className={tab === item.value ? styles.activeTab : ""}
-            type="button"
-            role="tab"
-            aria-selected={tab === item.value}
-            key={item.value}
-            onClick={() => setTab(item.value)}
-          >
-            <item.icon size={16} />
-            {item.label}
-            {item.value === "recycle" && diagnostics?.counts.recycle ? (
-              <i>{diagnostics.counts.recycle}</i>
-            ) : null}
-          </button>
-        ))}
-      </div>
-
       {error && (
         <div className={styles.alert}>
           <CircleAlert size={17} />
@@ -487,7 +489,7 @@ export function MaintenanceCenter({
         </div>
       )}
 
-      {diagnostics?.pendingRestore && (
+      {section === "backup" && diagnostics?.pendingRestore && (
         <div className={styles.pending}>
           <RefreshCw size={18} />
           <div>
@@ -511,7 +513,7 @@ export function MaintenanceCenter({
         </div>
       )}
 
-      {tab === "backup" && (
+      {section === "backup" && (
         <div className={styles.backupLayout}>
           <section className={styles.panel}>
             <div className={styles.panelHeading}>
@@ -678,7 +680,7 @@ export function MaintenanceCenter({
         </div>
       )}
 
-      {tab === "diagnostics" && diagnostics && (
+      {section === "diagnostics" && diagnostics && (
         <div className={styles.diagnostics}>
           <div className={styles.metricGrid}>
             <article>
@@ -856,7 +858,16 @@ export function MaintenanceCenter({
         </div>
       )}
 
-      {tab === "recycle" && (
+      {section === "diagnostics" && loading && !diagnostics && (
+        <div className={styles.panel}>
+          <div className={styles.empty}>
+            <LoaderCircle className="spin" size={19} />
+            正在读取系统信息…
+          </div>
+        </div>
+      )}
+
+      {section === "recycle" && (
         <section className={styles.panel}>
           <div className={styles.recycleHeading}>
             <div className={styles.panelHeading}>

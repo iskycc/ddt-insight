@@ -387,7 +387,7 @@ export function ImportCenter({
                 </span>
                 <strong>拖放表格或 ZIP 到这里</strong>
                 <p>
-                  支持根目录和一层子目录中的表格，最多 30 个
+                  支持 data 或 step1–stepN；ZIP 读取根目录/一层子目录，最多 30 个
                 </p>
                 <button
                   className={styles.browseButton}

@@ -1,8 +1,20 @@
 import { randomUUID } from "node:crypto";
 import { appendCaseHistory } from "@/lib/case-history";
+import {
+  createJourneyCase,
+  getCaseCell,
+  getJourneySteps,
+  sortStepNames,
+  synchronizeJourneyIdentity,
+} from "@/lib/case-data";
 import { db } from "@/lib/db";
 import { invalidateCaseCache } from "@/lib/repository";
-import type { AuthSession, CaseData, CellValue } from "@/lib/types";
+import type {
+  AuthSession,
+  CaseData,
+  CaseStepData,
+  CellValue,
+} from "@/lib/types";
 
 export type TemplateFieldType = "string" | "number" | "boolean" | "date";
 
@@ -421,6 +433,14 @@ export function validateCaseAgainstTemplate(
         continue;
       }
       if (valueIsEmpty) continue;
+      if (!isCellValue(value)) {
+        errors.push({
+          field: rule.field,
+          code: "type",
+          message: `字段“${rule.field}”必须是单元格值`,
+        });
+        continue;
+      }
       if (!valueMatchesType(value, rule.type)) {
         errors.push({
           field: rule.field,
@@ -530,25 +550,97 @@ export function bulkUpdateCases(input: {
         continue;
       }
       const before = JSON.parse(row.dataJson) as CaseData;
-      const candidate = { ...before };
-      for (const [rawField, value] of entries) {
-        candidate[rawField.trim()] = value as CellValue;
+      const journeySteps = getJourneySteps(before);
+      let after: CaseData;
+      if (journeySteps) {
+        let candidate = before;
+        let candidateSteps = journeySteps;
+        for (const [rawField, value] of entries) {
+          const field = rawField.trim();
+          if (field === "srNum") {
+            candidate = synchronizeJourneyIdentity(
+              candidate,
+              "srNum",
+              String(value ?? "").trim(),
+            );
+            candidateSteps = getJourneySteps(candidate)!;
+            continue;
+          }
+
+          const matchingSteps = sortStepNames(
+            Object.keys(candidateSteps).filter((stepName) =>
+              Object.hasOwn(candidateSteps[stepName], field),
+            ),
+          );
+          const targets = matchingSteps.length
+            ? matchingSteps
+            : [sortStepNames(Object.keys(candidateSteps))[0]];
+          candidateSteps = {
+            ...candidateSteps,
+            ...Object.fromEntries(
+              targets.map((stepName) => [
+                stepName,
+                {
+                  ...candidateSteps[stepName],
+                  [field]: value as CellValue,
+                },
+              ]),
+            ),
+          };
+          candidate = createJourneyCase(
+            String(getCaseCell(candidate, "CaseID") ?? ""),
+            String(getCaseCell(candidate, "srNum") ?? ""),
+            candidateSteps,
+          );
+        }
+
+        const srNum = String(getCaseCell(candidate, "srNum") ?? "");
+        const template = getCaseTemplateForSrNum(srNum);
+        const validatedSteps = Object.fromEntries(
+          sortStepNames(Object.keys(candidateSteps)).map((stepName) => {
+            const validation = validateCaseAgainstTemplate(
+              candidateSteps[stepName],
+              template,
+            );
+            if (!validation.valid) {
+              const reason = validation.errors
+                .map((item) => item.message)
+                .join("；");
+              throw new Error(
+                `用例“${caseId}”的 ${stepName} 未通过模板校验：${reason}`,
+              );
+            }
+            return [stepName, validation.data as CaseStepData];
+          }),
+        );
+        after = createJourneyCase(
+          String(getCaseCell(candidate, "CaseID") ?? ""),
+          srNum,
+          validatedSteps,
+        );
+      } else {
+        const candidate = { ...before };
+        for (const [rawField, value] of entries) {
+          candidate[rawField.trim()] = value as CellValue;
+        }
+        const template = getCaseTemplateForSrNum(
+          String(getCaseCell(candidate, "srNum") ?? ""),
+        );
+        const validation = validateCaseAgainstTemplate(candidate, template);
+        if (!validation.valid) {
+          const reason = validation.errors
+            .map((item) => item.message)
+            .join("；");
+          throw new Error(`用例“${caseId}”未通过模板校验：${reason}`);
+        }
+        after = validation.data;
       }
-      const template = getCaseTemplateForSrNum(
-        String(candidate.srNum ?? ""),
-      );
-      const validation = validateCaseAgainstTemplate(candidate, template);
-      if (!validation.valid) {
-        const reason = validation.errors.map((item) => item.message).join("；");
-        throw new Error(`用例“${caseId}”未通过模板校验：${reason}`);
-      }
-      const after = validation.data;
       if (JSON.stringify(before) === JSON.stringify(after)) {
         skipped.push(caseId);
         continue;
       }
       updateStatement.run(
-        String(after.srNum ?? ""),
+        String(getCaseCell(after, "srNum") ?? ""),
         JSON.stringify(after),
         now,
         caseId,
@@ -631,7 +723,7 @@ function appendDynamicFilter(
 ) {
   const alias = `field_${index}`;
   const prefix = `EXISTS (
-    SELECT 1 FROM json_each(cases.data_json) AS ${alias}
+    SELECT 1 FROM json_tree(cases.data_json) AS ${alias}
     WHERE ${alias}.key = ?`;
   parameters.push(filter.field);
 
@@ -641,7 +733,7 @@ function appendDynamicFilter(
       shouldExist
         ? `${prefix})`
         : `NOT EXISTS (
-            SELECT 1 FROM json_each(cases.data_json) AS ${alias}
+            SELECT 1 FROM json_tree(cases.data_json) AS ${alias}
             WHERE ${alias}.key = ?
           )`,
     );
@@ -739,7 +831,11 @@ export function searchCases(options: {
         case_id AS caseId,
         sr_num AS srNum,
         source_name AS sourceName,
-        updated_at AS updatedAt
+        updated_at AS updatedAt,
+        CASE
+          WHEN json_type(data_json, '$.用户旅程') = 'object' THEN 'journey'
+          ELSE 'standard'
+        END AS caseKind
       FROM cases
       ${whereClause}
       ORDER BY case_id COLLATE NOCASE
@@ -750,6 +846,7 @@ export function searchCases(options: {
     srNum: string;
     sourceName: string;
     updatedAt: string;
+    caseKind: "standard" | "journey";
   }>;
   const items = rows.slice(0, limit);
   return {

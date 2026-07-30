@@ -276,7 +276,10 @@ export function BulkCaseActions({
       <div className={styles.heading}>
         <div>
           <h3>批量管理</h3>
-          <p>修改会逐条记录永久历史，删除会先进入回收站。</p>
+          <p>
+            修改会逐条记录永久历史；用户旅程会更新全部同名 Step
+            字段，新字段写入 step1。
+          </p>
         </div>
         <span className={styles.count}>已选 {selectedCaseIds.length} 条</span>
       </div>
@@ -1028,43 +1031,19 @@ export function CaseTemplateManager({
 export interface CaseManagementToolsProps
   extends AdvancedCaseSearchProps,
     CaseTemplateManagerProps {
-  initialTab?: "search" | "templates";
+  section: "search" | "templates";
 }
 
 export function CaseManagementTools({
   onOpenCase,
   initialSrNum,
   onTemplatesChanged,
-  initialTab = "search",
+  section,
 }: CaseManagementToolsProps) {
-  const [tab, setTab] = useState(initialTab);
   return (
     <div className={`${styles.shell} workspace-page`}>
-      <nav className={styles.tabs} aria-label="用例管理工具">
-        {[
-          { value: "search", label: "高级检索", icon: Search },
-          { value: "templates", label: "字段模板", icon: LayoutTemplate },
-        ].map((item) => {
-          const Icon = item.icon;
-          return (
-            <button
-              className={`${styles.tab} ${
-                tab === item.value ? styles.tabActive : ""
-              }`}
-              type="button"
-              aria-current={tab === item.value ? "page" : undefined}
-              key={item.value}
-              onClick={() =>
-                setTab(item.value as "search" | "templates")
-              }
-            >
-              <Icon size={15} /> {item.label}
-            </button>
-          );
-        })}
-      </nav>
-      {tab === "search" && <AdvancedCaseSearch onOpenCase={onOpenCase} />}
-      {tab === "templates" && (
+      {section === "search" && <AdvancedCaseSearch onOpenCase={onOpenCase} />}
+      {section === "templates" && (
         <CaseTemplateManager
           initialSrNum={initialSrNum}
           onTemplatesChanged={onTemplatesChanged}

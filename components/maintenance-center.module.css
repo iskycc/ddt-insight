@@ -2,7 +2,7 @@
   --maintenance-border: rgba(74, 91, 121, 0.14);
   --maintenance-muted: #667085;
   width: 100%;
-  max-width: 1310px;
+  max-width: var(--workspace-wide-content-width);
   margin-right: auto;
   margin-left: auto;
 }
@@ -33,56 +33,6 @@
 
 .heading p {
   font-size: 0.625rem;
-}
-
-.tabs {
-  display: flex;
-  width: fit-content;
-  gap: 4px;
-  margin: 25px 0 13px;
-  padding: 4px;
-  border: 1px solid rgba(82, 98, 128, 0.12);
-  border-radius: 13px;
-  background: rgba(239, 243, 249, 0.72);
-}
-
-.tabs button {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  min-height: 34px;
-  padding: 0 12px;
-  border: 0;
-  border-radius: 9px;
-  background: transparent;
-  color: #5e697c;
-  font: inherit;
-  font-size: 0.5rem;
-  font-weight: 650;
-  cursor: pointer;
-}
-
-.tabs button:hover {
-  color: #24324a;
-  background: rgba(255, 255, 255, 0.65);
-}
-
-.tabs button.activeTab {
-  color: #17233a;
-  background: #fff;
-  box-shadow: 0 4px 14px rgba(31, 47, 76, 0.09);
-}
-
-.tabs button i {
-  display: grid;
-  min-width: 18px;
-  height: 18px;
-  place-items: center;
-  border-radius: 9px;
-  background: #eef1f7;
-  color: #536079;
-  font-size: 0.375rem;
-  font-style: normal;
 }
 
 .alert,
@@ -612,16 +562,6 @@
     display: grid;
   }
 
-  .tabs {
-    width: 100%;
-  }
-
-  .tabs button {
-    flex: 1;
-    justify-content: center;
-    padding: 0 8px;
-  }
-
   .backupLayout,
   .diagnosticColumns {
     grid-template-columns: 1fr;
@@ -641,19 +581,6 @@
 }
 
 @media (max-width: 520px) {
-  .tabs button {
-    font-size: 0;
-  }
-
-  .tabs button svg {
-    width: 18px;
-    height: 18px;
-  }
-
-  .tabs button i {
-    font-size: 10px;
-  }
-
   .metricGrid {
     grid-template-columns: 1fr;
   }

@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  Archive,
   ArrowLeft,
   ArrowRight,
   BarChart3,
@@ -20,6 +21,7 @@ import {
   FileSpreadsheet,
   Gauge,
   LayoutGrid,
+  LayoutTemplate,
   ListChecks,
   ListFilter,
   LoaderCircle,
@@ -85,16 +87,25 @@ import {
   groovyClientExample,
   java8ClientExample,
 } from "@/lib/api-client-examples";
+import {
+  getCaseCell,
+  getJourneyStepNames,
+  getJourneySteps,
+  isJourneyCase,
+} from "@/lib/case-data";
 
 type WorkspaceView =
   | "cases"
-  | "caseTools"
+  | "caseSearch"
+  | "caseTemplates"
   | "overview"
   | "api"
   | "users"
   | "ldap"
   | "imports"
-  | "maintenance"
+  | "backups"
+  | "systemInfo"
+  | "recycle"
   | "audit";
 type GroupItem = { srNum: string; count: number };
 
@@ -147,13 +158,16 @@ function timeAgo(value: string) {
 
 const viewLabels: Record<WorkspaceView, string> = {
   cases: "用例管理",
-  caseTools: "检索与模板",
+  caseSearch: "高级检索",
+  caseTemplates: "字段模板",
   overview: "数据概览",
   api: "开放 API",
   users: "用户管理",
   ldap: "LDAP",
   imports: "导入来源",
-  maintenance: "运维中心",
+  backups: "备份与恢复",
+  systemInfo: "系统信息",
+  recycle: "回收站",
   audit: "审计日志",
 };
 
@@ -415,12 +429,20 @@ export function WorkspaceClient({
             {stats && <em>{countFormatter.format(stats.totalCases)}</em>}
           </button>
           <button
-            className={classNames(view === "caseTools" && "active")}
+            className={classNames(view === "caseSearch" && "active")}
             type="button"
-            onClick={() => selectView("caseTools")}
+            onClick={() => selectView("caseSearch")}
           >
-            <ListChecks size={18} />
-            检索与模板
+            <Search size={18} />
+            高级检索
+          </button>
+          <button
+            className={classNames(view === "caseTemplates" && "active")}
+            type="button"
+            onClick={() => selectView("caseTemplates")}
+          >
+            <LayoutTemplate size={18} />
+            字段模板
           </button>
           <button
             className={classNames(view === "overview" && "active")}
@@ -468,12 +490,28 @@ export function WorkspaceClient({
                 导入来源
               </button>
               <button
-                className={classNames(view === "maintenance" && "active")}
+                className={classNames(view === "backups" && "active")}
                 type="button"
-                onClick={() => selectView("maintenance")}
+                onClick={() => selectView("backups")}
+              >
+                <Archive size={18} />
+                备份与恢复
+              </button>
+              <button
+                className={classNames(view === "systemInfo" && "active")}
+                type="button"
+                onClick={() => selectView("systemInfo")}
               >
                 <Gauge size={18} />
-                运维中心
+                系统信息
+              </button>
+              <button
+                className={classNames(view === "recycle" && "active")}
+                type="button"
+                onClick={() => selectView("recycle")}
+              >
+                <Trash2 size={18} />
+                回收站
               </button>
               <button
                 className={classNames(view === "audit" && "active")}
@@ -598,8 +636,10 @@ export function WorkspaceClient({
             onLoadMore={() => loadCases(false)}
             onImport={() => setImportOpen(true)}
             onCaseUpdate={(data) => {
-              const nextCaseId = String(data.CaseID ?? selectedCaseId);
-              const nextSrNum = String(data.srNum ?? "");
+              const nextCaseId = String(
+                getCaseCell(data, "CaseID") ?? selectedCaseId,
+              );
+              const nextSrNum = String(getCaseCell(data, "srNum") ?? "");
               setSelectedCase(data);
               setCases((current) =>
                 current.map((item) =>
@@ -681,15 +721,22 @@ export function WorkspaceClient({
           />
         )}
 
-        {view === "caseTools" && (
+        {view === "caseSearch" && (
           <CaseManagementTools
-            initialSrNum={selectedGroup}
+            section="search"
             onOpenCase={(caseId) => {
               setSelectedGroup("");
               setQuery(caseId);
               setSelectedCaseId(caseId);
               setView("cases");
             }}
+          />
+        )}
+
+        {view === "caseTemplates" && (
+          <CaseManagementTools
+            section="templates"
+            initialSrNum={selectedGroup}
           />
         )}
 
@@ -709,8 +756,17 @@ export function WorkspaceClient({
 
         {view === "imports" && role === "admin" && <ImportSourceTracker />}
 
-        {view === "maintenance" && role === "admin" && (
+        {view === "backups" && role === "admin" && (
+          <MaintenanceCenter section="backup" onToast={setToast} />
+        )}
+
+        {view === "systemInfo" && role === "admin" && (
+          <MaintenanceCenter section="diagnostics" onToast={setToast} />
+        )}
+
+        {view === "recycle" && role === "admin" && (
           <MaintenanceCenter
+            section="recycle"
             onToast={setToast}
             onCasesChanged={() => {
               setSelectedCase(null);
@@ -813,8 +869,32 @@ function CaseManager({
   const [resizing, setResizing] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [activeJourneyStep, setActiveJourneyStep] = useState("");
   const [loadingMoreForNavigation, setLoadingMoreForNavigation] =
     useState(false);
+  const journeySteps = selectedCase
+    ? getJourneySteps(selectedCase)
+    : null;
+  const journeyStepNames = selectedCase
+    ? getJourneyStepNames(selectedCase)
+    : [];
+  const journeyStepKey = journeyStepNames.join("|");
+  const resolvedJourneyStep =
+    journeySteps && journeyStepNames.length
+      ? journeySteps[activeJourneyStep]
+        ? activeJourneyStep
+        : journeyStepNames[0]
+      : "";
+  const visibleCaseData =
+    journeySteps && resolvedJourneyStep
+      ? journeySteps[resolvedJourneyStep]
+      : selectedCase;
+
+  useEffect(() => {
+    setActiveJourneyStep(journeyStepNames[0] ?? "");
+    // The joined key is stable while the journey structure is unchanged.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedCaseId, journeyStepKey]);
 
   const defaultCaseListWidth = useCallback(() => {
     const value = Number.parseFloat(
@@ -1222,6 +1302,9 @@ function CaseManager({
                           {item.srNum}
                           <i>·</i>
                           {timeAgo(item.updatedAt)}
+                          {item.caseKind === "journey" && (
+                            <em className="case-kind-badge">用户旅程</em>
+                          )}
                         </small>
                       </p>
                       <ChevronRight size={15} />
@@ -1418,10 +1501,15 @@ function CaseManager({
                     </p>
                   </div>
                 </div>
-                <span className="case-status">
-                  <i />
-                  数据有效
-                </span>
+                <div className="case-statuses">
+                  {isJourneyCase(selectedCase) && (
+                    <span className="case-kind-status">用户旅程</span>
+                  )}
+                  <span className="case-status">
+                    <i />
+                    数据有效
+                  </span>
+                </div>
               </div>
 
               <div className="detail-summary">
@@ -1431,11 +1519,19 @@ function CaseManager({
                 </div>
                 <div>
                   <small>所属 srNum</small>
-                  <strong>{formatValue(selectedCase.srNum)}</strong>
+                  <strong>
+                    {formatValue(getCaseCell(selectedCase, "srNum"))}
+                  </strong>
                 </div>
                 <div>
-                  <small>字段数量</small>
-                  <strong>{Object.keys(selectedCase).length}</strong>
+                  <small>
+                    {journeySteps ? "旅程结构" : "字段数量"}
+                  </small>
+                  <strong>
+                    {journeySteps
+                      ? `${journeyStepNames.length} 步 · ${Object.keys(visibleCaseData ?? {}).length} 字段`
+                      : Object.keys(visibleCaseData ?? {}).length}
+                  </strong>
                 </div>
                 <div>
                   <small>最后更新</small>
@@ -1443,14 +1539,53 @@ function CaseManager({
                 </div>
               </div>
 
+              {journeySteps && (
+                <div className="journey-step-switcher">
+                  <div>
+                    <span className="eyebrow">USER JOURNEY</span>
+                    <strong>切换旅程 Step</strong>
+                  </div>
+                  <div
+                    className="journey-step-tabs"
+                    role="tablist"
+                    aria-label="用户旅程步骤"
+                  >
+                    {journeyStepNames.map((stepName, index) => (
+                      <button
+                        className={classNames(
+                          resolvedJourneyStep === stepName && "active",
+                        )}
+                        key={stepName}
+                        type="button"
+                        role="tab"
+                        aria-selected={resolvedJourneyStep === stepName}
+                        onClick={() => setActiveJourneyStep(stepName)}
+                      >
+                        <span>{index + 1}</span>
+                        {stepName}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               <div className="fields-heading">
                 <div>
-                  <h3>字段内容</h3>
-                  <p>逐项查看和修改当前用例的数据</p>
+                  <h3>
+                    {journeySteps
+                      ? `${resolvedJourneyStep} 字段内容`
+                      : "字段内容"}
+                  </h3>
+                  <p>
+                    {journeySteps
+                      ? "当前仅展示所选 Step，修改 CaseID 或 srNum 会同步全部 Step"
+                      : "逐项查看和修改当前用例的数据"}
+                  </p>
                 </div>
                 <span>
                   <Pencil size={11} />
-                  {Object.keys(selectedCase).length} 个字段 · 悬浮字段可编辑
+                  {Object.keys(visibleCaseData ?? {}).length} 个字段 ·
+                  悬浮字段可编辑
                 </span>
               </div>
 
@@ -1460,15 +1595,18 @@ function CaseManager({
                   caseLoading && "case-fields-loading",
                 )}
               >
-                {Object.entries(selectedCase).map(([column, value]) => (
+                {Object.entries(visibleCaseData ?? {}).map(([column, value]) => (
                   <EditableField
-                    key={column}
+                    key={`${resolvedJourneyStep}:${column}`}
                     caseId={selectedCaseId}
                     column={column}
                     value={value}
+                    stepName={resolvedJourneyStep || undefined}
                     onUpdated={(data) => {
                       onCaseUpdate(data);
-                      onToast(`“${column}”已保存`);
+                      onToast(
+                        `“${resolvedJourneyStep ? `${resolvedJourneyStep} · ` : ""}${column}”已保存`,
+                      );
                     }}
                     onError={onToast}
                   />
@@ -1500,7 +1638,8 @@ function CaseManager({
             </span>
             <h2>从导入第一份表格开始</h2>
             <p>
-              系统会读取 data Sheet，并以 CaseID 建立高性能索引。
+              系统会读取 data Sheet，或将 step1 至 stepN
+              组合为用户旅程，并以 CaseID 建立高性能索引。
             </p>
             <button
               className="button button-primary"
@@ -1898,12 +2037,14 @@ function EditableField({
   caseId,
   column,
   value,
+  stepName,
   onUpdated,
   onError,
 }: {
   caseId: string;
   column: string;
   value: unknown;
+  stepName?: string;
   onUpdated: (data: CaseData) => void;
   onError: (message: string) => void;
 }) {
@@ -1959,7 +2100,7 @@ function EditableField({
         {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ column, value: draft }),
+          body: JSON.stringify({ column, value: draft, step: stepName }),
         },
       );
       const body = (await response.json()) as CaseData & { error?: string };
@@ -2101,7 +2242,7 @@ function EditableField({
               </div>
               <div>
                 <dt>修改字段</dt>
-                <dd>{column}</dd>
+                <dd>{stepName ? `${stepName} · ${column}` : column}</dd>
               </div>
             </dl>
 
@@ -2450,6 +2591,12 @@ function ApiGuide() {
                 <span>{"}"}</span>
               </code>
             </pre>
+            <p className="api-journey-note">
+              <strong>用户旅程：</strong>
+              返回对象会额外包含“用户旅程” Map，内部按
+              <code>step1</code> 至 <code>stepN</code>
+              保存各 Step 的完整列名和值。
+            </p>
           </article>
 
           <section className="api-client-examples">

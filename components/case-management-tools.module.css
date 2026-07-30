@@ -1,7 +1,7 @@
 .shell {
   display: grid;
   width: 100%;
-  max-width: 1310px;
+  max-width: var(--workspace-wide-content-width);
   margin-right: auto;
   margin-left: auto;
   align-content: start;
@@ -9,17 +9,6 @@
   color: #172033;
 }
 
-.tabs {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 4px;
-  padding: 4px;
-  border: 1px solid rgba(24, 38, 64, 0.09);
-  border-radius: 13px;
-  background: rgba(238, 242, 248, 0.78);
-}
-
-.tab,
 .button,
 .iconButton,
 .result,
@@ -27,35 +16,6 @@
   border: 0;
   font: inherit;
   cursor: pointer;
-}
-
-.tab {
-  display: inline-flex;
-  min-width: 0;
-  min-height: 34px;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  padding: 0 10px;
-  border-radius: 9px;
-  color: #627087;
-  background: transparent;
-  font-size: 0.5rem;
-  font-weight: 650;
-  transition: color 150ms ease, background 150ms ease, box-shadow 150ms ease;
-}
-
-.tab:hover,
-.tab:focus-visible {
-  outline: none;
-  color: #224b7b;
-  background: rgba(255, 255, 255, 0.68);
-}
-
-.tabActive {
-  color: #13284a;
-  background: rgba(255, 255, 255, 0.96);
-  box-shadow: 0 4px 15px rgba(37, 57, 87, 0.1);
 }
 
 .panel,

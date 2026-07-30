@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auditRequest } from "@/lib/audit";
+import { isCellValue } from "@/lib/case-data";
 import { errorResponse, requireApiSession } from "@/lib/http";
 import { deleteCase, getCase, updateCaseColumn } from "@/lib/repository";
 
@@ -55,6 +56,7 @@ export async function PATCH(
   let body: {
     column?: string;
     value?: string | number | boolean | null;
+    step?: string;
   };
 
   try {
@@ -64,7 +66,11 @@ export async function PATCH(
   }
 
   const column = body.column?.trim() ?? "";
-  if (!column || !Object.hasOwn(body, "value")) {
+  if (
+    !column ||
+    !Object.hasOwn(body, "value") ||
+    !isCellValue(body.value)
+  ) {
     return errorResponse("column 和 value 为必填项");
   }
 
@@ -74,6 +80,7 @@ export async function PATCH(
       column,
       body.value ?? null,
       session,
+      body.step?.trim() || undefined,
     );
     if (!updated) return errorResponse("未找到该 CaseID", 404);
     return NextResponse.json(updated);

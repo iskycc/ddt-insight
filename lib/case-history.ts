@@ -1,10 +1,16 @@
 import { db } from "@/lib/db";
+import {
+  getJourneySteps,
+  isCellValue,
+  sortStepNames,
+} from "@/lib/case-data";
 import type {
   AuthSession,
   CaseData,
   CaseHistoryChange,
   CaseHistoryItem,
   CaseHistoryKind,
+  CellValue,
   UserProvider,
 } from "@/lib/types";
 
@@ -25,16 +31,35 @@ export function diffCaseData(
   before: CaseData,
   after: CaseData,
 ): CaseHistoryChange[] {
+  const flatten = (data: CaseData) => {
+    const values = new Map<string, CellValue>();
+    for (const [column, value] of Object.entries(data)) {
+      if (isCellValue(value)) values.set(column, value);
+    }
+    const steps = getJourneySteps(data);
+    if (steps) {
+      for (const stepName of sortStepNames(Object.keys(steps))) {
+        for (const [column, value] of Object.entries(steps[stepName])) {
+          values.set(`${stepName}.${column}`, value);
+        }
+      }
+    }
+    return values;
+  };
+  const beforeValues = flatten(before);
+  const afterValues = flatten(after);
   const columns = [
-    ...Object.keys(before),
-    ...Object.keys(after).filter((column) => !Object.hasOwn(before, column)),
+    ...beforeValues.keys(),
+    ...[...afterValues.keys()].filter(
+      (column) => !beforeValues.has(column),
+    ),
   ];
 
   return columns.flatMap((column) => {
-    const beforeExists = Object.hasOwn(before, column);
-    const afterExists = Object.hasOwn(after, column);
-    const beforeValue = beforeExists ? before[column] : null;
-    const afterValue = afterExists ? after[column] : null;
+    const beforeExists = beforeValues.has(column);
+    const afterExists = afterValues.has(column);
+    const beforeValue = beforeValues.get(column) ?? null;
+    const afterValue = afterValues.get(column) ?? null;
 
     if (
       beforeExists === afterExists &&

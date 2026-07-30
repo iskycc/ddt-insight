@@ -6,7 +6,15 @@ import {
   writeFile,
 } from "node:fs/promises";
 import path from "node:path";
+import { isDeepStrictEqual } from "node:util";
 import { writeAudit } from "@/lib/audit";
+import {
+  createJourneyCase,
+  getCaseCell,
+  getJourneySteps,
+  isJourneyCase,
+  sortStepNames,
+} from "@/lib/case-data";
 import {
   getCaseTemplateForSrNum,
   validateCaseAgainstTemplate,
@@ -21,6 +29,7 @@ import {
 import type {
   AuthSession,
   CaseData,
+  CaseStepData,
   ImportResult,
 } from "@/lib/types";
 
@@ -223,13 +232,7 @@ function parseErrors(value: string): ImportFileError[] {
 }
 
 function sameCaseData(left: CaseData, right: CaseData) {
-  const keys = new Set([...Object.keys(left), ...Object.keys(right)]);
-  if (Object.keys(left).length !== Object.keys(right).length) return false;
-  for (const key of keys) {
-    if (!(key in left) || !(key in right)) return false;
-    if (!Object.is(left[key], right[key])) return false;
-  }
-  return true;
+  return isDeepStrictEqual(left, right);
 }
 
 export function validateImportSpreadsheet(parsed: ParsedSpreadsheet) {
@@ -237,11 +240,41 @@ export function validateImportSpreadsheet(parsed: ParsedSpreadsheet) {
   const invalid: string[] = [];
   let invalidCount = 0;
   const rows = parsed.rows.map((row) => {
-    const srNum = String(row.srNum ?? "");
+    const srNum = String(getCaseCell(row, "srNum") ?? "");
     const key = srNum.toLocaleLowerCase("en-US");
     if (!templates.has(key)) {
       templates.set(key, getCaseTemplateForSrNum(srNum));
     }
+
+    if (isJourneyCase(row)) {
+      const steps = getJourneySteps(row)!;
+      const validatedSteps = Object.fromEntries(
+        sortStepNames(Object.keys(steps)).map((stepName) => {
+          const validation = validateCaseAgainstTemplate(
+            steps[stepName],
+            templates.get(key) ?? null,
+            { applyDefaults: true },
+          );
+          if (!validation.valid) {
+            invalidCount += 1;
+            if (invalid.length < 20) {
+              invalid.push(
+                `CaseID ${String(getCaseCell(row, "CaseID"))} / ${stepName}：${validation.errors
+                  .map((issue) => issue.message)
+                  .join("；")}`,
+              );
+            }
+          }
+          return [stepName, validation.data as CaseStepData];
+        }),
+      );
+      return createJourneyCase(
+        String(getCaseCell(row, "CaseID") ?? ""),
+        srNum,
+        validatedSteps,
+      );
+    }
+
     const validation = validateCaseAgainstTemplate(
       row,
       templates.get(key) ?? null,
@@ -251,7 +284,7 @@ export function validateImportSpreadsheet(parsed: ParsedSpreadsheet) {
       invalidCount += 1;
       if (invalid.length < 20) {
         invalid.push(
-          `CaseID ${String(row.CaseID)}：${validation.errors
+          `CaseID ${String(getCaseCell(row, "CaseID"))}：${validation.errors
             .map((issue) => issue.message)
             .join("；")}`,
         );
@@ -268,8 +301,20 @@ export function validateImportSpreadsheet(parsed: ParsedSpreadsheet) {
 
   const columns = [...parsed.columns];
   for (const row of rows) {
-    for (const column of Object.keys(row)) {
-      if (!columns.includes(column)) columns.push(column);
+    const steps = getJourneySteps(row);
+    if (steps) {
+      for (const stepName of sortStepNames(Object.keys(steps))) {
+        for (const column of Object.keys(steps[stepName])) {
+          const qualifiedColumn = `${stepName}.${column}`;
+          if (!columns.includes(qualifiedColumn)) {
+            columns.push(qualifiedColumn);
+          }
+        }
+      }
+    } else {
+      for (const column of Object.keys(row)) {
+        if (!columns.includes(column)) columns.push(column);
+      }
     }
   }
   return { ...parsed, columns, rows };

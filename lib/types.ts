@@ -1,6 +1,12 @@
 export type CellValue = string | number | boolean | null;
 
-export type CaseData = Record<string, CellValue>;
+export type CaseStepData = Record<string, CellValue>;
+
+export type JourneySteps = Record<string, CaseStepData>;
+
+export type CaseData = Record<string, CellValue | JourneySteps>;
+
+export type CaseKind = "standard" | "journey";
 
 export type CaseHistoryKind = "edit" | "import_overwrite";
 
@@ -30,6 +36,7 @@ export interface CaseListItem {
   srNum: string;
   updatedAt: string;
   sourceName: string;
+  caseKind: CaseKind;
 }
 
 export interface ImportResult {

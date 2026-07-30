@@ -1,6 +1,19 @@
 import * as XLSX from "xlsx";
-import type { AuthSession, CaseData, CellValue } from "@/lib/types";
+import {
+  createJourneyCase,
+  getCaseCell,
+  getJourneySteps,
+  isJourneyCase,
+  normalizeStepName,
+  sortStepNames,
+} from "@/lib/case-data";
 import { getCasesForExport, importCases } from "@/lib/repository";
+import type {
+  AuthSession,
+  CaseData,
+  CaseStepData,
+  CellValue,
+} from "@/lib/types";
 
 const SUPPORTED_EXTENSIONS = new Set([
   "xlsx",
@@ -9,6 +22,7 @@ const SUPPORTED_EXTENSIONS = new Set([
   "csv",
   "ods",
 ]);
+const EXPORTED_STEP_PRESENT_COLUMN = "__DDT_INSIGHT_STEP_PRESENT__";
 
 export interface ParsedSpreadsheet {
   fileName: string;
@@ -33,6 +47,95 @@ function normalizeCell(value: unknown): CellValue {
   if (typeof value === "number" || typeof value === "boolean") return value;
   if (value instanceof Date) return value.toISOString();
   return String(value);
+}
+
+interface ParsedSheet {
+  name: string;
+  columns: string[];
+  rows: CaseStepData[];
+}
+
+function parseCaseSheet(
+  workbook: XLSX.WorkBook,
+  sheetName: string,
+): ParsedSheet {
+  const sheet = workbook.Sheets[sheetName];
+  const matrix = XLSX.utils.sheet_to_json<unknown[]>(sheet, {
+    header: 1,
+    defval: "",
+    raw: false,
+    blankrows: false,
+  });
+
+  if (matrix.length < 2) {
+    throw new Error(`${sheetName} Sheet 中没有可导入的用例数据`);
+  }
+
+  const columns = matrix[0].map((cell) => String(cell ?? "").trim());
+  const emptyHeaderIndex = columns.findIndex((column) => !column);
+  if (emptyHeaderIndex >= 0) {
+    throw new Error(
+      `${sheetName} Sheet 第 ${emptyHeaderIndex + 1} 列缺少列名`,
+    );
+  }
+
+  const normalizedColumnSet = new Set(
+    columns.map((column) => column.toLocaleLowerCase("en-US")),
+  );
+  if (normalizedColumnSet.size !== columns.length) {
+    throw new Error(`${sheetName} Sheet 中存在重复列名`);
+  }
+
+  const caseIdIndex = columns.findIndex((column) => column === "CaseID");
+  const srNumIndex = columns.findIndex((column) => column === "srNum");
+  if (caseIdIndex < 0) {
+    throw new Error(`${sheetName} Sheet 缺少必需列 CaseID`);
+  }
+  if (srNumIndex < 0) {
+    throw new Error(`${sheetName} Sheet 缺少必需列 srNum`);
+  }
+
+  const rows: CaseStepData[] = [];
+  const seenCaseIds = new Set<string>();
+  for (let index = 1; index < matrix.length; index += 1) {
+    const sourceRow = matrix[index];
+    if (
+      sourceRow.every((value) => String(value ?? "").trim() === "")
+    ) {
+      continue;
+    }
+
+    const caseId = String(sourceRow[caseIdIndex] ?? "").trim();
+    const srNum = String(sourceRow[srNumIndex] ?? "").trim();
+    const sheetRow = index + 1;
+    if (!caseId) {
+      throw new Error(`${sheetName} Sheet 第 ${sheetRow} 行的 CaseID 为空`);
+    }
+    if (!srNum) {
+      throw new Error(`${sheetName} Sheet 第 ${sheetRow} 行的 srNum 为空`);
+    }
+
+    const normalizedCaseId = caseId.toLocaleLowerCase("en-US");
+    if (seenCaseIds.has(normalizedCaseId)) {
+      throw new Error(
+        `CaseID “${caseId}”在 ${sheetName} Sheet 中重复`,
+      );
+    }
+    seenCaseIds.add(normalizedCaseId);
+
+    const row: CaseStepData = {};
+    columns.forEach((column, columnIndex) => {
+      row[column] = normalizeCell(sourceRow[columnIndex]);
+    });
+    row.CaseID = caseId;
+    row.srNum = srNum;
+    rows.push(row);
+  }
+
+  if (!rows.length) {
+    throw new Error(`${sheetName} Sheet 中没有可导入的有效用例`);
+  }
+  return { name: sheetName, columns, rows };
 }
 
 export function parseSpreadsheet(
@@ -67,83 +170,129 @@ export function parseSpreadsheet(
       (name) => name.trim().toLocaleLowerCase("en-US") === "data",
     ) ?? (extension === "csv" ? workbook.SheetNames[0] : undefined);
 
-  if (!dataSheetName) {
-    throw new Error("未找到名为 data 的 Sheet 页");
-  }
-
-  const sheet = workbook.Sheets[dataSheetName];
-  const matrix = XLSX.utils.sheet_to_json<unknown[]>(sheet, {
-    header: 1,
-    defval: "",
-    raw: false,
-    blankrows: false,
+  const stepSheetNames = workbook.SheetNames.flatMap((name) => {
+    const normalized = normalizeStepName(name);
+    return normalized ? [{ original: name, normalized }] : [];
   });
-
-  if (matrix.length < 2) {
-    throw new Error("data Sheet 中没有可导入的用例数据");
-  }
-
-  const columns = matrix[0].map((cell) => String(cell ?? "").trim());
-  const emptyHeaderIndex = columns.findIndex((column) => !column);
-  if (emptyHeaderIndex >= 0) {
-    throw new Error(`第 ${emptyHeaderIndex + 1} 列缺少列名`);
-  }
-
-  const normalizedColumnSet = new Set(
-    columns.map((column) => column.toLocaleLowerCase("en-US")),
+  const duplicateStepName = stepSheetNames.find(
+    (entry, index) =>
+      stepSheetNames.findIndex(
+        (candidate) => candidate.normalized === entry.normalized,
+      ) !== index,
   );
-  if (normalizedColumnSet.size !== columns.length) {
-    throw new Error("data Sheet 中存在重复列名");
+  if (duplicateStepName) {
+    throw new Error(
+      `存在多个代表 ${duplicateStepName.normalized} 的 Sheet 页`,
+    );
   }
 
-  const caseIdIndex = columns.findIndex((column) => column === "CaseID");
-  const srNumIndex = columns.findIndex((column) => column === "srNum");
-
-  if (caseIdIndex < 0) {
-    throw new Error("data Sheet 缺少必需列 CaseID");
+  const orderedStepSheets = stepSheetNames.sort(
+    (left, right) =>
+      Number(left.normalized.slice(4)) - Number(right.normalized.slice(4)),
+  );
+  if (orderedStepSheets.length) {
+    for (let index = 0; index < orderedStepSheets.length; index += 1) {
+      const expected = `step${index + 1}`;
+      if (orderedStepSheets[index].normalized !== expected) {
+        throw new Error(
+          `用户旅程 Sheet 必须从 step1 开始且连续，缺少 ${expected}`,
+        );
+      }
+    }
   }
-  if (srNumIndex < 0) {
-    throw new Error("data Sheet 缺少必需列 srNum");
+
+  if (!dataSheetName && !orderedStepSheets.length) {
+    throw new Error(
+      "未找到 data Sheet，也未找到从 step1 开始的用户旅程 Sheet",
+    );
   }
 
+  const columns: string[] = [];
   const rows: CaseData[] = [];
   const seenCaseIds = new Set<string>();
-
-  for (let index = 1; index < matrix.length; index += 1) {
-    const sourceRow = matrix[index];
-    const rowIsEmpty = sourceRow.every(
-      (value) => String(value ?? "").trim() === "",
-    );
-    if (rowIsEmpty) continue;
-
-    const caseId = String(sourceRow[caseIdIndex] ?? "").trim();
-    const srNum = String(sourceRow[srNumIndex] ?? "").trim();
-    const sheetRow = index + 1;
-
-    if (!caseId) {
-      throw new Error(`data Sheet 第 ${sheetRow} 行的 CaseID 为空`);
+  if (dataSheetName) {
+    const dataSheet = parseCaseSheet(workbook, dataSheetName);
+    columns.push(...dataSheet.columns);
+    for (const row of dataSheet.rows) {
+      const caseId = String(row.CaseID);
+      const normalizedCaseId = caseId.toLocaleLowerCase("en-US");
+      if (seenCaseIds.has(normalizedCaseId)) {
+        throw new Error(`CaseID “${caseId}”在当前表格中重复`);
+      }
+      seenCaseIds.add(normalizedCaseId);
+      rows.push(row);
     }
-    if (!srNum) {
-      throw new Error(`data Sheet 第 ${sheetRow} 行的 srNum 为空`);
-    }
-
-    const normalizedCaseId = caseId.toLocaleLowerCase("en-US");
-    if (seenCaseIds.has(normalizedCaseId)) {
-      throw new Error(`CaseID “${caseId}”在当前表格中重复`);
-    }
-    seenCaseIds.add(normalizedCaseId);
-
-    const row: CaseData = {};
-    columns.forEach((column, columnIndex) => {
-      row[column] = normalizeCell(sourceRow[columnIndex]);
-    });
-    row.CaseID = caseId;
-    row.srNum = srNum;
-    rows.push(row);
   }
 
-  if (!rows.length) {
-    throw new Error("data Sheet 中没有可导入的有效用例");
+  if (orderedStepSheets.length) {
+    const parsedSteps = orderedStepSheets.map((entry) => ({
+      normalized: entry.normalized,
+      sheet: parseCaseSheet(workbook, entry.original),
+    }));
+    const expectedRows = parsedSteps[0].sheet.rows.length;
+    const mismatched = parsedSteps.find(
+      ({ sheet }) => sheet.rows.length !== expectedRows,
+    );
+    if (mismatched) {
+      throw new Error(
+        `用户旅程各 Step 的数据行数必须一致：${parsedSteps[0].sheet.name} 有 ${expectedRows} 行，${mismatched.sheet.name} 有 ${mismatched.sheet.rows.length} 行`,
+      );
+    }
+
+    for (const { normalized, sheet } of parsedSteps) {
+      for (const column of sheet.columns) {
+        if (column === EXPORTED_STEP_PRESENT_COLUMN) continue;
+        columns.push(`${normalized}.${column}`);
+      }
+    }
+
+    for (let rowIndex = 0; rowIndex < expectedRows; rowIndex += 1) {
+      const first = parsedSteps[0].sheet.rows[rowIndex];
+      const caseId = String(first.CaseID);
+      const srNum = String(first.srNum);
+      for (const current of parsedSteps.slice(1)) {
+        const currentRow = current.sheet.rows[rowIndex];
+        if (String(currentRow.CaseID) !== caseId) {
+          throw new Error(
+            `用户旅程第 ${rowIndex + 1} 条用例的 CaseID 不一致：step1 为“${caseId}”，${current.normalized} 为“${String(currentRow.CaseID)}”`,
+          );
+        }
+        if (String(currentRow.srNum) !== srNum) {
+          throw new Error(
+            `用户旅程 CaseID “${caseId}”的 srNum 不一致：step1 为“${srNum}”，${current.normalized} 为“${String(currentRow.srNum)}”`,
+          );
+        }
+      }
+
+      const normalizedCaseId = caseId.toLocaleLowerCase("en-US");
+      if (seenCaseIds.has(normalizedCaseId)) {
+        throw new Error(`CaseID “${caseId}”在当前表格中重复`);
+      }
+      seenCaseIds.add(normalizedCaseId);
+      rows.push(
+        createJourneyCase(
+          caseId,
+          srNum,
+          Object.fromEntries(
+            parsedSteps.flatMap(({ normalized, sheet }) => {
+              const source = sheet.rows[rowIndex];
+              const presentValue = String(
+                source[EXPORTED_STEP_PRESENT_COLUMN] ?? "true",
+              ).toLocaleLowerCase("en-US");
+              if (["false", "0", "no"].includes(presentValue)) return [];
+              return [[
+                normalized,
+                Object.fromEntries(
+                  Object.entries(source).filter(
+                    ([column]) => column !== EXPORTED_STEP_PRESENT_COLUMN,
+                  ),
+                ),
+              ]];
+            }),
+          ),
+        ),
+      );
+    }
   }
 
   return {
@@ -186,20 +335,72 @@ export function buildExportWorkbook(options: {
   const rows = getCasesForExport(options);
   if (!rows.length) throw new Error("没有符合条件的用例可导出");
 
-  const columnSet = new Set<string>(["CaseID", "srNum"]);
-  for (const row of rows) {
-    for (const column of Object.keys(row)) columnSet.add(column);
+  const workbook = XLSX.utils.book_new();
+  const appendSheet = (
+    sheetRows: CaseStepData[],
+    sheetName: string,
+  ) => {
+    const columnSet = new Set<string>(["CaseID", "srNum"]);
+    for (const row of sheetRows) {
+      for (const column of Object.keys(row)) columnSet.add(column);
+    }
+    const columns = [...columnSet];
+    const sheet = XLSX.utils.json_to_sheet(sheetRows, { header: columns });
+    sheet["!autofilter"] = { ref: sheet["!ref"] ?? "A1" };
+    sheet["!cols"] = columns.map((column) => ({
+      wch: Math.min(Math.max(column.length + 2, 14), 42),
+      ...(column === EXPORTED_STEP_PRESENT_COLUMN
+        ? { hidden: true }
+        : {}),
+    }));
+    XLSX.utils.book_append_sheet(workbook, sheet, sheetName);
+  };
+
+  const standardRows = rows.filter((row) => !isJourneyCase(row));
+  if (standardRows.length) {
+    appendSheet(
+      standardRows.map((row) =>
+        Object.fromEntries(
+          Object.entries(row).filter(([, value]) => {
+            return (
+              value === null ||
+              ["string", "number", "boolean"].includes(typeof value)
+            );
+          }),
+        ) as CaseStepData,
+      ),
+      "data",
+    );
   }
 
-  const columns = [...columnSet];
-  const sheet = XLSX.utils.json_to_sheet(rows, { header: columns });
-  sheet["!autofilter"] = { ref: sheet["!ref"] ?? "A1" };
-  sheet["!cols"] = columns.map((column) => ({
-    wch: Math.min(Math.max(column.length + 2, 14), 42),
-  }));
+  const journeyRows = rows.filter(isJourneyCase);
+  const stepNames = sortStepNames([
+    ...new Set(
+      journeyRows.flatMap((row) =>
+        Object.keys(getJourneySteps(row) ?? {}),
+      ),
+    ),
+  ]);
+  for (const stepName of stepNames) {
+    const hasMissingStep = journeyRows.some(
+      (row) => !getJourneySteps(row)?.[stepName],
+    );
+    appendSheet(
+      journeyRows.map((row) => {
+        const step = getJourneySteps(row)?.[stepName];
+        if (!hasMissingStep) return step!;
+        return step
+          ? { ...step, [EXPORTED_STEP_PRESENT_COLUMN]: true }
+          : {
+              CaseID: String(getCaseCell(row, "CaseID") ?? ""),
+              srNum: String(getCaseCell(row, "srNum") ?? ""),
+              [EXPORTED_STEP_PRESENT_COLUMN]: false,
+            };
+      }),
+      stepName,
+    );
+  }
 
-  const workbook = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(workbook, sheet, "data");
   return XLSX.write(workbook, {
     type: "buffer",
     bookType: "xlsx",

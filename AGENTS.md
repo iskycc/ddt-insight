@@ -8,7 +8,7 @@ DDT Insight 是完全离线运行的 Next.js 全栈用例数据管理平台：
 
 - Next.js App Router 同时提供前端页面和 Route Handler 后端。
 - SQLite 是唯一持久化数据库，默认位于 `data/ddt-insight.sqlite`。
-- 表格中的 `CaseID` 是全局唯一索引，`srNum` 是用例分组字段。
+- 表格中的 `CaseID` 是全局唯一索引，`srNum` 是用例分组字段；用户旅程由 `step1` 至 `stepN` 各 Sheet 的对应行组成。
 - 不同表格可以拥有完全不同的动态列。
 - 本地用户、LDAP 配置、用例修改历史和审计日志与用例数据共用 SQLite 持久化。
 
@@ -17,7 +17,7 @@ DDT Insight 是完全离线运行的 Next.js 全栈用例数据管理平台：
 1. 运行时不得依赖 CDN、远程字体、远程图片、远程脚本、云 API 或其他互联网资源。
 2. 开放用例查询 API 不得增加登录或 Token 鉴权。
 3. 管理接口必须继续要求管理员 Session。
-4. 导入必须校验 `data` Sheet、`CaseID`、`srNum` 和文件内重复 CaseID；ZIP 只读取根目录和一层子目录中的表格。
+4. 导入必须校验普通 `data` Sheet，或大小写不敏感且从 `step1` 连续到 `stepN` 的用户旅程 Sheet；每个 Sheet 均校验 `CaseID`、`srNum`，用户旅程还必须校验各 Step 行数和对应行身份一致；ZIP 只读取根目录和一层子目录中的表格。
 5. CaseID 修改必须保持唯一性，并同步更新数据库主键和 JSON 内容。
 6. 大型用例库不得一次性传输或渲染全部用例；继续使用索引检索和分页加载。
 7. 不得将真实数据库、Session Secret、管理员密码或测试用例提交到仓库或镜像。

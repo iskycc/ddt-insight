@@ -1,5 +1,13 @@
 import { randomUUID } from "node:crypto";
 import { appendCaseHistory } from "@/lib/case-history";
+import {
+  createJourneyCase,
+  getCaseCell,
+  getJourneySteps,
+  isJourneyCase,
+  normalizeStepName,
+  synchronizeJourneyIdentity,
+} from "@/lib/case-data";
 import { db } from "@/lib/db";
 import type {
   AuthSession,
@@ -47,7 +55,7 @@ export function importCases(payload: ImportPayload): ImportResult {
   const now = new Date().toISOString();
   const fileId = randomUUID();
   const uniqueSrNums = new Set(
-    payload.rows.map((row) => String(row.srNum ?? "")),
+    payload.rows.map((row) => String(getCaseCell(row, "srNum") ?? "")),
   );
 
   const existingStatement = db.prepare(`
@@ -96,8 +104,8 @@ export function importCases(payload: ImportPayload): ImportResult {
     );
 
     for (const row of payload.rows) {
-      const caseId = String(row.CaseID);
-      const srNum = String(row.srNum);
+      const caseId = String(getCaseCell(row, "CaseID"));
+      const srNum = String(getCaseCell(row, "srNum"));
       const existing = existingStatement.get(caseId) as
         | { recordId: string; dataJson: string }
         | undefined;
@@ -202,7 +210,11 @@ export function listCases(options: {
         case_id AS caseId,
         sr_num AS srNum,
         updated_at AS updatedAt,
-        source_name AS sourceName
+        source_name AS sourceName,
+        CASE
+          WHEN json_type(data_json, '$.用户旅程') = 'object' THEN 'journey'
+          ELSE 'standard'
+        END AS caseKind
       FROM cases
       ${whereClause}
       ORDER BY case_id COLLATE NOCASE
@@ -248,6 +260,7 @@ export function updateCaseColumn(
     AuthSession,
     "userId" | "username" | "displayName" | "provider"
   >,
+  stepName?: string,
 ) {
   const stored = db
     .prepare(`
@@ -260,12 +273,53 @@ export function updateCaseColumn(
   if (!stored) return null;
 
   const existing = JSON.parse(stored.dataJson) as CaseData;
-  if (!(column in existing)) {
-    throw new Error(`列“${column}”不存在`);
+  const steps = getJourneySteps(existing);
+  let normalizedStep: string | null = null;
+  let currentValue: unknown;
+  let next: CaseData;
+
+  if (steps) {
+    normalizedStep = normalizeStepName(stepName ?? "");
+    if (!normalizedStep || !steps[normalizedStep]) {
+      throw new Error("请指定有效的用户旅程 Step");
+    }
+    if (!(column in steps[normalizedStep])) {
+      throw new Error(
+        `${normalizedStep} 中不存在列“${column}”`,
+      );
+    }
+    currentValue = steps[normalizedStep][column];
+    if (column === "CaseID" || column === "srNum") {
+      next = synchronizeJourneyIdentity(
+        existing,
+        column,
+        String(value ?? "").trim(),
+      );
+    } else {
+      next = createJourneyCase(
+        String(getCaseCell(existing, "CaseID") ?? ""),
+        String(getCaseCell(existing, "srNum") ?? ""),
+        {
+          ...steps,
+          [normalizedStep]: {
+            ...steps[normalizedStep],
+            [column]: value,
+          },
+        },
+      );
+    }
+  } else {
+    if (stepName) {
+      throw new Error("普通用例不支持 Step 参数");
+    }
+    if (!(column in existing)) {
+      throw new Error(`列“${column}”不存在`);
+    }
+    currentValue = existing[column];
+    next = { ...existing, [column]: value };
   }
 
-  const next: CaseData = { ...existing, [column]: value };
-  if (Object.is(existing[column], value)) return existing;
+  if (Object.is(currentValue, value)) return existing;
 
   const now = new Date().toISOString();
 
@@ -284,7 +338,7 @@ export function updateCaseColumn(
       .get(nextCaseId, stored.recordId);
     if (duplicate) throw new Error(`CaseID “${nextCaseId}”已经存在`);
 
-    next.CaseID = nextCaseId;
+    if (!isJourneyCase(next)) next.CaseID = nextCaseId;
 
     try {
       db.transaction(() => {
@@ -328,7 +382,9 @@ export function updateCaseColumn(
   }
 
   const srNum =
-    column === "srNum" ? String(value ?? "") : String(next.srNum ?? "");
+    column === "srNum"
+      ? String(value ?? "").trim()
+      : String(getCaseCell(next, "srNum") ?? "");
 
   db.transaction(() => {
     db.prepare(`
