@@ -169,6 +169,29 @@ docker run -d \
 
 Docker 镜像包含 Next.js 服务和全部运行依赖，但不包含数据库或测试数据。首次启动时会在挂载的数据目录中自动创建空数据库。容器启动后不需要访问互联网。
 
+## GitHub Actions 镜像发布
+
+`.github/workflows/release-image.yml` 用于生成可离线传输的 Docker 镜像包。工作流只执行以下操作：
+
+1. 构建 `linux/amd64` Docker 镜像。
+2. 将镜像导出为 `ddt-insight-<版本>-linux-amd64.tar.gz`。
+3. 生成对应的 `.sha256` 校验文件。
+4. 将两个文件上传到对应版本的 GitHub Release。
+
+工作流不会登录 Docker Hub，也不会执行 `docker push`。可以通过推送 `v*` 标签触发：
+
+```bash
+git tag v1.0.2
+git push origin v1.0.2
+```
+
+也可以在 GitHub Actions 页面手动运行，并输入 `1.0.2` 或 `v1.0.2`。下载 Release 中的镜像包后，可在离线机器执行：
+
+```bash
+sha256sum -c ddt-insight-1.0.2-linux-amd64.tar.gz.sha256
+gzip -dc ddt-insight-1.0.2-linux-amd64.tar.gz | docker load
+```
+
 ## 数据与性能
 
 默认数据目录是项目根目录下的 `data/`，可通过 `DDT_DATA_DIR` 指定绝对路径。

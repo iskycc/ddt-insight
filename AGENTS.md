@@ -22,6 +22,7 @@ DDT Insight 是完全离线运行的 Next.js 全栈用例数据管理平台：
 7. 不得将真实数据库、Session Secret、管理员密码或测试用例提交到仓库或镜像。
 8. Docker 数据必须持久化到 `/app/data`。
 9. `docker-compose.yml` 必须保持 Compose V1 可解析；不要加入只在新版 Compose Spec 中存在的字段。
+10. Release 工作流只允许构建、导出镜像并上传 GitHub Release；不得添加镜像仓库登录或 `docker push`。
 
 ## 关键目录
 
@@ -33,6 +34,7 @@ DDT Insight 是完全离线运行的 Next.js 全栈用例数据管理平台：
 - `lib/auth.ts`：本地管理员 Session。
 - `vendor/`：离线保留的 SheetJS 依赖包。
 - `scripts/package-offline.mjs`：独立离线运行目录生成脚本。
+- `.github/workflows/release-image.yml`：Docker 镜像离线包 Release 流水线。
 
 ## API 权限边界
 
