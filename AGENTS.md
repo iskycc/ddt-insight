@@ -51,6 +51,7 @@ DDT Insight 是完全离线运行的 Next.js 全栈用例数据管理平台：
 - `lib/ldap.ts`：LDAP 配置、连接测试与认证。
 - `lib/audit.ts`：安全审计写入与分页查询。
 - `lib/security.ts`：scrypt 密码摘要与 LDAP 密钥加密。
+- `lib/system-settings.ts`：运行时系统配置（导入限制等）的持久化读写。
 - `vendor/`：离线保留的 SheetJS 依赖包。
 - `scripts/package-offline.mjs`：独立离线运行目录生成脚本。
 - `.github/workflows/release-image.yml`：Docker 镜像离线包 Release 流水线。
@@ -92,6 +93,7 @@ DDT Insight 是完全离线运行的 Next.js 全栈用例数据管理平台：
 - `POST /api/admin/ldap/test`
 - `GET /api/admin/audit`
 - `GET /api/admin/imports`
+- `GET/PUT /api/admin/settings`
 - `GET /api/admin/maintenance`
 - `GET/POST/DELETE /api/admin/maintenance/backups...`
 - `POST/DELETE /api/admin/maintenance/restore`

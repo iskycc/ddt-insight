@@ -748,14 +748,16 @@
 
 .sourceFiles span {
   display: inline-flex;
-  max-width: 250px;
+  max-width: 100%;
   align-items: center;
   gap: 5px;
-  overflow: hidden;
   color: #64707b;
   font-size: 0.4375rem;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
+}
+
+.sourceFiles span svg {
+  flex-shrink: 0;
 }
 
 .empty {

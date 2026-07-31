@@ -16,11 +16,13 @@ import {
   RotateCcw,
   Save,
   Search,
+  Settings,
   ShieldCheck,
   Trash2,
   Upload,
   X,
 } from "lucide-react";
+import type { SystemSettings } from "@/lib/system-settings";
 import {
   ChangeEvent,
   FormEvent,
@@ -32,7 +34,11 @@ import {
 import styles from "@/components/maintenance-center.module.css";
 
 type ToastHandler = (message: string) => void;
-export type MaintenanceSection = "backup" | "diagnostics" | "recycle";
+export type MaintenanceSection =
+  | "backup"
+  | "diagnostics"
+  | "recycle"
+  | "settings";
 
 type BackupItem = {
   id: string;
@@ -162,6 +168,10 @@ export function MaintenanceCenter({
   const [backupConfirm, setBackupConfirm] = useState("");
   const [restorePassphrase, setRestorePassphrase] = useState("");
   const [restoreFile, setRestoreFile] = useState<File | null>(null);
+  const [settings, setSettings] = useState<SystemSettings | null>(null);
+  const [settingsDraft, setSettingsDraft] = useState<SystemSettings | null>(
+    null,
+  );
   const [confirmAction, setConfirmAction] = useState<
     | { kind: "backup"; item: BackupItem }
     | { kind: "purge"; item: DeletedCase }
@@ -210,6 +220,16 @@ export function MaintenanceCenter({
     setRecycleHasMore(body.hasMore);
   }, [appliedRecycleQuery, recycleOffset]);
 
+  const loadSettings = useCallback(async () => {
+    const response = await fetch("/api/admin/settings", { cache: "no-store" });
+    if (!response.ok) {
+      throw new Error(await responseError(response, "读取系统配置失败"));
+    }
+    const body = (await response.json()) as SystemSettings;
+    setSettings(body);
+    setSettingsDraft(body);
+  }, []);
+
   const refresh = useCallback(async () => {
     setLoading(true);
     setError("");
@@ -218,6 +238,8 @@ export function MaintenanceCenter({
         await Promise.all([loadDiagnostics(), loadBackups()]);
       } else if (section === "diagnostics") {
         await loadDiagnostics();
+      } else if (section === "settings") {
+        await loadSettings();
       } else {
         await loadRecycle();
       }
@@ -228,7 +250,7 @@ export function MaintenanceCenter({
     } finally {
       setLoading(false);
     }
-  }, [loadBackups, loadDiagnostics, loadRecycle, section]);
+  }, [loadBackups, loadDiagnostics, loadRecycle, loadSettings, section]);
 
   useEffect(() => {
     void refresh();
@@ -316,6 +338,33 @@ export function MaintenanceCenter({
         checkpointError instanceof Error
           ? checkpointError.message
           : "检查点执行失败",
+      );
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function saveSettings(event: FormEvent) {
+    event.preventDefault();
+    if (!settingsDraft) return;
+    setBusy("settings-save");
+    setError("");
+    try {
+      const response = await fetch("/api/admin/settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(settingsDraft),
+      });
+      if (!response.ok) {
+        throw new Error(await responseError(response, "保存系统配置失败"));
+      }
+      const body = (await response.json()) as SystemSettings;
+      setSettings(body);
+      setSettingsDraft(body);
+      onToast("系统配置已保存");
+    } catch (saveError) {
+      setError(
+        saveError instanceof Error ? saveError.message : "保存系统配置失败",
       );
     } finally {
       setBusy("");
@@ -451,6 +500,11 @@ export function MaintenanceCenter({
       title: "系统信息",
       description:
         "查看运行版本、存储容量、SQLite 完整性和 WAL 检查点状态。",
+    },
+    settings: {
+      eyebrow: "SYSTEM CONFIG",
+      title: "系统配置",
+      description: "管理导入限制、ZIP 解压策略等运行时参数。",
     },
     recycle: {
       eyebrow: "RECOVERY",
@@ -973,6 +1027,108 @@ export function MaintenanceCenter({
               <ChevronRight size={14} />
             </button>
           </div>
+        </section>
+      )}
+
+      {section === "settings" && settingsDraft && (
+        <section className={`${styles.panel} ${styles.settingsLayout}`}>
+          <div className={styles.panelHeading}>
+            <span className={styles.iconOrange}>
+              <Settings size={19} />
+            </span>
+            <div>
+              <h2>导入限制</h2>
+              <p>控制单次导入可处理的文件数量与大小上限。</p>
+            </div>
+          </div>
+          <form className={styles.form} onSubmit={saveSettings}>
+            <label>
+              <span>单次最多导入文件数</span>
+              <input
+                type="number"
+                min={1}
+                max={500}
+                required
+                value={settingsDraft.maxImportFiles}
+                onChange={(event) =>
+                  setSettingsDraft((current) =>
+                    current
+                      ? { ...current, maxImportFiles: Number(event.target.value) }
+                      : current,
+                  )
+                }
+              />
+            </label>
+            <label>
+              <span>单个文件大小上限（MB）</span>
+              <input
+                type="number"
+                min={1}
+                max={8192}
+                required
+                value={settingsDraft.maxImportMb}
+                onChange={(event) =>
+                  setSettingsDraft((current) =>
+                    current
+                      ? { ...current, maxImportMb: Number(event.target.value) }
+                      : current,
+                  )
+                }
+              />
+            </label>
+            <label>
+              <span>ZIP 解压后表格总大小上限（MB）</span>
+              <input
+                type="number"
+                min={1}
+                max={8192}
+                required
+                value={settingsDraft.maxArchiveUncompressedMb}
+                onChange={(event) =>
+                  setSettingsDraft((current) =>
+                    current
+                      ? {
+                          ...current,
+                          maxArchiveUncompressedMb: Number(event.target.value),
+                        }
+                      : current,
+                  )
+                }
+              />
+            </label>
+            <label>
+              <span>ZIP 内条目检查上限</span>
+              <input
+                type="number"
+                min={1}
+                max={5000}
+                required
+                value={settingsDraft.maxArchiveEntries}
+                onChange={(event) =>
+                  setSettingsDraft((current) =>
+                    current
+                      ? {
+                          ...current,
+                          maxArchiveEntries: Number(event.target.value),
+                        }
+                      : current,
+                  )
+                }
+              />
+            </label>
+            <button
+              className="button button-primary"
+              type="submit"
+              disabled={busy === "settings-save"}
+            >
+              {busy === "settings-save" ? (
+                <LoaderCircle className="spin" size={16} />
+              ) : (
+                <Save size={16} />
+              )}
+              保存配置
+            </button>
+          </form>
         </section>
       )}
 

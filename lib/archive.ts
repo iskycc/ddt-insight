@@ -11,10 +11,8 @@ interface ExtractZipOptions {
   maxFiles: number;
   maxFileBytes: number;
   maxTotalBytes: number;
-  maxEntries?: number;
+  maxEntries: number;
 }
-
-const DEFAULT_MAX_ARCHIVE_ENTRIES = 500;
 
 class ZipImportError extends Error {}
 
@@ -52,7 +50,7 @@ export async function extractSpreadsheetsFromZip(
   archive: Buffer,
   options: ExtractZipOptions,
 ) {
-  const maxEntries = options.maxEntries ?? DEFAULT_MAX_ARCHIVE_ENTRIES;
+  const maxEntries = options.maxEntries;
   let inspectedEntries = 0;
   let selectedEntries = 0;
   let declaredBytes = 0;

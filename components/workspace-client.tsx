@@ -40,6 +40,7 @@ import {
   Server,
   ShieldCheck,
   ScrollText,
+  Settings,
   ScanLine,
   Sparkles,
   Trash2,
@@ -109,7 +110,8 @@ type WorkspaceView =
   | "backups"
   | "systemInfo"
   | "recycle"
-  | "audit";
+  | "audit"
+  | "settings";
 type GroupItem = { srNum: string; count: number };
 
 const countFormatter = new Intl.NumberFormat("zh-CN");
@@ -173,6 +175,7 @@ const viewLabels: Record<WorkspaceView, string> = {
   systemInfo: "系统信息",
   recycle: "回收站",
   audit: "审计日志",
+  settings: "系统配置",
 };
 
 export function WorkspaceClient({
@@ -522,6 +525,14 @@ export function WorkspaceClient({
                 导入来源
               </button>
               <button
+                className={classNames(view === "settings" && "active")}
+                type="button"
+                onClick={() => selectView("settings")}
+              >
+                <Settings size={18} />
+                系统配置
+              </button>
+              <button
                 className={classNames(view === "backups" && "active")}
                 type="button"
                 onClick={() => selectView("backups")}
@@ -800,6 +811,10 @@ export function WorkspaceClient({
         )}
 
         {view === "imports" && role === "admin" && <ImportSourceTracker />}
+
+        {view === "settings" && role === "admin" && (
+          <MaintenanceCenter section="settings" onToast={setToast} />
+        )}
 
         {view === "backups" && role === "admin" && (
           <MaintenanceCenter section="backup" onToast={setToast} />

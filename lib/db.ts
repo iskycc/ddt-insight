@@ -321,6 +321,13 @@ function createDatabase() {
 
     CREATE INDEX IF NOT EXISTS idx_api_call_counters_user
       ON api_call_counters (user_id, day);
+
+    CREATE TABLE IF NOT EXISTS system_settings (
+      key TEXT PRIMARY KEY,
+      value_json TEXT NOT NULL DEFAULT '{}',
+      updated_at TEXT NOT NULL,
+      updated_by TEXT NOT NULL DEFAULT ''
+    );
   `);
 
   const userColumns = database

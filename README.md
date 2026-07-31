@@ -324,8 +324,6 @@ gzip -dc ddt-insight-1.0.12-linux-arm64.tar.gz | docker load
 | `SESSION_SECRET` | 自动生成 | Session 签名与 LDAP 密码加密密钥；通常由 `data/.session-secret` 持久化 |
 | `DDT_DATA_DIR` | `./data` | 数据库存储目录 |
 | `COOKIE_SECURE` | `false` | 仅在 HTTPS 部署时设为 `true` |
-| `MAX_IMPORT_MB` | `200` | 单个导入文件的大小上限 |
-| `MAX_ARCHIVE_UNCOMPRESSED_MB` | `200` | ZIP 解压后全部表格的总大小上限 |
 | `MAX_BACKUP_RESTORE_MB` | `4096` | “备份与恢复”页面上传恢复文件的大小上限 |
 | `PORT` | `3000` | 服务端口 |
 | `HOSTNAME` | `0.0.0.0` | 监听地址 |

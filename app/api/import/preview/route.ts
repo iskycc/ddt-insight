@@ -9,6 +9,7 @@ import {
   type ImportFileError,
   type ImportUpload,
 } from "@/lib/import-jobs";
+import { getSystemSettings } from "@/lib/system-settings";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -36,24 +37,23 @@ export async function POST(request: NextRequest) {
     .getAll("files")
     .filter((item): item is File => item instanceof File);
   if (!files.length) return errorResponse("请选择至少一个表格或 ZIP 文件");
-  if (files.length > 30) {
-    return errorResponse("单次最多选择 30 个表格或 ZIP 文件");
-  }
-
-  const maxSizeMb = Number(process.env.MAX_IMPORT_MB ?? 200);
-  const maxSizeBytes = maxSizeMb * 1024 * 1024;
-  const maxArchiveSizeMb = Number(
-    process.env.MAX_ARCHIVE_UNCOMPRESSED_MB ?? maxSizeMb,
-  );
-  const maxArchiveSizeBytes = maxArchiveSizeMb * 1024 * 1024;
+  const settings = getSystemSettings();
+  const maxSizeBytes = settings.maxImportMb * 1024 * 1024;
+  const maxArchiveSizeBytes = settings.maxArchiveUncompressedMb * 1024 * 1024;
+  const maxImportFiles = settings.maxImportFiles;
+  const maxArchiveEntries = settings.maxArchiveEntries;
   const spreadsheets: ImportUpload[] = [];
   const errors: ImportFileError[] = [];
+
+  if (files.length > maxImportFiles) {
+    return errorResponse(`单次最多选择 ${maxImportFiles} 个表格或 ZIP 文件`);
+  }
 
   for (const file of files) {
     if (file.size > maxSizeBytes) {
       errors.push({
         fileName: file.name,
-        error: `文件超过 ${maxSizeMb} MB 上限`,
+        error: `文件超过 ${settings.maxImportMb} MB 上限`,
       });
       continue;
     }
@@ -61,20 +61,21 @@ export async function POST(request: NextRequest) {
     try {
       const buffer = Buffer.from(await file.arrayBuffer());
       if (isZipFile(file.name)) {
-        const remainingFiles = 30 - spreadsheets.length;
+        const remainingFiles = maxImportFiles - spreadsheets.length;
         if (remainingFiles <= 0) {
-          throw new Error("单次最多导入 30 个表格文件");
+          throw new Error(`单次最多导入 ${maxImportFiles} 个表格文件`);
         }
         const extracted = await extractSpreadsheetsFromZip(buffer, {
           archiveName: file.name,
           maxFiles: remainingFiles,
           maxFileBytes: maxSizeBytes,
           maxTotalBytes: maxArchiveSizeBytes,
+          maxEntries: maxArchiveEntries,
         });
         spreadsheets.push(...extracted);
       } else {
-        if (spreadsheets.length >= 30) {
-          throw new Error("单次最多导入 30 个表格文件");
+        if (spreadsheets.length >= maxImportFiles) {
+          throw new Error(`单次最多导入 ${maxImportFiles} 个表格文件`);
         }
         spreadsheets.push({ fileName: file.name, buffer });
       }
