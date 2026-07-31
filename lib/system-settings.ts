@@ -68,8 +68,8 @@ const settingRanges: Record<keyof SystemSettings, { min: number; max: number }> 
   {
     maxImportMb: { min: 1, max: 8192 },
     maxArchiveUncompressedMb: { min: 1, max: 8192 },
-    maxImportFiles: { min: 1, max: 500 },
-    maxArchiveEntries: { min: 1, max: 5000 },
+    maxImportFiles: { min: 1, max: Number.MAX_SAFE_INTEGER },
+    maxArchiveEntries: { min: 1, max: Number.MAX_SAFE_INTEGER },
   };
 
 export function validateSystemSettings(
@@ -83,11 +83,11 @@ export function validateSystemSettings(
       return { valid: false, error: `${key} 必须是整数` };
     }
     const range = settingRanges[key];
-    if (value < range.min || value > range.max) {
-      return {
-        valid: false,
-        error: `${key} 必须在 ${range.min}~${range.max} 之间`,
-      };
+    if (value < range.min) {
+      return { valid: false, error: `${key} 必须大于等于 ${range.min}` };
+    }
+    if (range.max < Number.MAX_SAFE_INTEGER && value > range.max) {
+      return { valid: false, error: `${key} 不能超过 ${range.max}` };
     }
   }
   return { valid: true };

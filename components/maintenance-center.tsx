@@ -1047,7 +1047,6 @@ export function MaintenanceCenter({
               <input
                 type="number"
                 min={1}
-                max={500}
                 required
                 value={settingsDraft.maxImportFiles}
                 onChange={(event) =>
@@ -1101,7 +1100,6 @@ export function MaintenanceCenter({
               <input
                 type="number"
                 min={1}
-                max={5000}
                 required
                 value={settingsDraft.maxArchiveEntries}
                 onChange={(event) =>
