@@ -20,8 +20,10 @@ DDT Insight 是一个完全离线运行的用例数据管理平台。前端和�
 - 导出当前用例、指定 srNum 分组或全部用例
 - 无鉴权开放查询 API，支持 CORS
 - 公开统计大盘与管理员工作台
-- 本地用户管理，支持管理员/编辑员角色、启停、密码重置和删除
-- LDAP/Active Directory 登录、首次登录自动纳管、mail/Group 属性同步与加密保存 Bind 密码
+- 本地用户管理，支持管理员/编辑员角色、启停、显示名称修改、密码重置和删除；默认管理员不可降权、停用或删除
+- 个人信息页面支持本地用户自助维护显示名称和邮箱，LDAP 资料保持目录同步只读
+- 持久化统计开放、认证与未认证 API 调用次数，并展示平台与个人调用量
+- LDAP/Active Directory 登录、首次登录自动纳管、mail/Group 检索同步与加密保存 Bind 密码
 - 安全审计支持事件分类、组合筛选和人员、资源、操作、IP、详情搜索
 - 备份与恢复、系统信息和回收站使用独立工作台页面，分别处理数据保护、运行诊断和误删恢复
 - 桌面端主导航一键隐藏，CaseID 列表可拖拽缩放、快捷压缩或适应最长 ID
@@ -79,8 +81,10 @@ npm run dev
 | 高性能与并发 | WAL、索引、mmap、LRU | API 热路径不执行文件解析或全表扫描 |
 | 未登录统计大盘 | `/` | 不登录可以查看平台统计 |
 | 登录后用例管理 | `/workspace` | 编辑员与管理员可维护用例，接口无 Session 返回 401 |
-| 用户与角色 | 用户管理页面 | 本地用户可创建、启停、重置密码；管理员系统页对编辑员返回 403 |
-| LDAP 登录 | LDAP 页面与 `ldapts` | 服务账户搜索用户 DN，再使用用户密码 Bind；首次登录自动纳管并同步 mail 与多值 Group |
+| 用户与角色 | 用户管理页面 | 本地用户可创建、启停、修改显示名称和重置密码；默认管理员保持启用且不可降权或删除，管理员系统页对编辑员返回 403 |
+| 个人信息 | 个人信息页面与 `/api/auth/me` | 用户只能维护自己的本地显示名称和邮箱；LDAP 资料只读，角色、状态和身份不可自助修改 |
+| API 调用统计 | 个人信息页面 | SQLite 聚合保存平台今日/累计、开放、认证、未认证及当前用户认证调用次数 |
+| LDAP 登录 | LDAP 页面与 `ldapts` | 服务账户搜索用户 DN，再使用用户密码 Bind；支持 Group Search Base/Filter 并同步简洁组名 |
 | 审计日志 | 审计日志页面 | 可按分类、操作、结果分页筛选，并搜索人员、资源、IP 和事件详情 |
 | 备份与恢复 | 工作台“备份与恢复” | AES-256-GCM 口令加密备份，恢复经完整性检查并在重启时安全替换 |
 | 容量与诊断 | 工作台“系统信息” | 显示数据库/WAL/备份/磁盘容量、表占用、运行版本和完整性状态 |
@@ -164,7 +168,7 @@ CaseID 不存在时返回 `null`；JDK 8 版本不依赖任何第三方 JSON 库
 - 管理员：管理用例、用户、LDAP 配置和审计日志。
 - 编辑员：导入、检索、修改和导出用例，无权访问系统管理接口。
 
-LDAP 在“工作台 → LDAP”中配置，支持 `ldap://` 与 `ldaps://`、Bind DN、用户 Base DN、自定义用户过滤器、显示名称属性、邮箱属性、多值 Group 属性、连接超时和 TLS 证书校验。过滤器必须包含 `{{username}}`，平台会在查询前按 LDAP 过滤器规则转义用户名。邮箱与 Group 属性默认使用 `mail` 和 `memberOf`，也可按目录 Schema 修改或留空禁用。LDAP 用户每次成功登录都会同步显示名称、邮箱和 Group 列表，并在用户管理页面展示；平台角色仍由管理员独立控制，不会由 LDAP Group 自动提升。
+LDAP 在“工作台 → LDAP”中配置，支持 `ldap://` 与 `ldaps://`、Bind DN、用户 Base DN、自定义用户过滤器、Group Search Base/Filter、显示名称/邮箱/Group 名称属性、连接超时和 TLS 证书校验。用户过滤器必须包含 `{{username}}`；Group 过滤器必须包含 `{{userDn}}` 或 `{{username}}`，平台会在查询前按 LDAP 过滤器规则转义占位符值。配置 Group Search Base 后，平台查询 Group 条目并只同步名称属性（默认 `cn`）；留空时继续兼容读取用户条目的多值 `memberOf`。LDAP 用户每次成功登录都会同步显示名称、邮箱和 Group 列表；平台角色仍由管理员独立控制，不会由 LDAP Group 自动提升。
 
 LDAP Bind 密码通过本机 Session 密钥使用 AES-256-GCM 加密后保存，不会由 API 返回，也不会写入审计详情。备份或迁移时必须保存整个 `data/` 目录，其中同时包含 SQLite 数据库和自动生成的 `.session-secret`；如果显式配置了 `SESSION_SECRET`，迁移后必须保持一致。
 
@@ -220,7 +224,7 @@ Windows 可以运行 `start.cmd`。启动脚本会先检查 Node.js 主版本，
 
 ```text
 iskycc/ddt-insight:latest
-iskycc/ddt-insight:1.0.9
+iskycc/ddt-insight:1.0.10
 ```
 
 使用 Docker Compose：
@@ -279,20 +283,20 @@ Docker 镜像基于 Node.js 24 Alpine，包含 Next.js 服务和全部运行依�
 工作流不会登录 Docker Hub，也不会执行 `docker push`。可以通过推送 `v*` 标签触发：
 
 ```bash
-git tag v1.0.9
-git push origin v1.0.9
+git tag v1.0.10
+git push origin v1.0.10
 ```
 
-也可以在 GitHub Actions 页面手动运行，并输入 `1.0.9` 或 `v1.0.9`。下载与目标机器 CPU 架构匹配的镜像包后，可在离线机器执行：
+也可以在 GitHub Actions 页面手动运行，并输入 `1.0.10` 或 `v1.0.10`。下载与目标机器 CPU 架构匹配的镜像包后，可在离线机器执行：
 
 ```bash
 # x86-64 机器
-sha256sum -c ddt-insight-1.0.9-linux-amd64.tar.gz.sha256
-gzip -dc ddt-insight-1.0.9-linux-amd64.tar.gz | docker load
+sha256sum -c ddt-insight-1.0.10-linux-amd64.tar.gz.sha256
+gzip -dc ddt-insight-1.0.10-linux-amd64.tar.gz | docker load
 
 # ARM64 / AArch64 机器
-sha256sum -c ddt-insight-1.0.9-linux-arm64.tar.gz.sha256
-gzip -dc ddt-insight-1.0.9-linux-arm64.tar.gz | docker load
+sha256sum -c ddt-insight-1.0.10-linux-arm64.tar.gz.sha256
+gzip -dc ddt-insight-1.0.10-linux-arm64.tar.gz | docker load
 ```
 
 两个离线包加载后都提供 `iskycc/ddt-insight:<版本>` 和 `iskycc/ddt-insight:latest` 标签。ARM 构建目标为当前服务器和开发板常用的 64 位 `arm64`，不包含 32 位 `arm/v7`。

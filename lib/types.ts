@@ -76,6 +76,7 @@ export interface UserRecord {
   provider: UserProvider;
   role: UserRole;
   enabled: boolean;
+  isBootstrapAdmin: boolean;
   lastLoginAt: string | null;
   createdAt: string;
   updatedAt: string;
@@ -100,11 +101,25 @@ export interface LdapConfigPublic {
   displayNameAttribute: string;
   mailAttribute: string;
   groupAttribute: string;
+  groupSearchBase: string;
+  groupSearchFilter: string;
+  groupNameAttribute: string;
   defaultRole: UserRole;
   tlsRejectUnauthorized: boolean;
   connectTimeoutMs: number;
   updatedAt: string | null;
   updatedBy: string;
+}
+
+export interface ApiCallStatistics {
+  platformTotal: number;
+  platformToday: number;
+  openTotal: number;
+  authenticatedTotal: number;
+  anonymousTotal: number;
+  currentUserTotal: number;
+  currentUserToday: number;
+  lastCalledAt: string | null;
 }
 
 export type AuditCategory = "auth" | "case" | "user" | "ldap" | "system";

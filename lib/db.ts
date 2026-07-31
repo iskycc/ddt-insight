@@ -252,6 +252,8 @@ function createDatabase() {
       provider TEXT NOT NULL CHECK (provider IN ('local', 'ldap')),
       role TEXT NOT NULL CHECK (role IN ('admin', 'editor')),
       enabled INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0, 1)),
+      is_bootstrap_admin INTEGER NOT NULL DEFAULT 0
+        CHECK (is_bootstrap_admin IN (0, 1)),
       password_hash TEXT,
       last_login_at TEXT,
       created_at TEXT NOT NULL,
@@ -272,6 +274,9 @@ function createDatabase() {
       display_name_attribute TEXT NOT NULL DEFAULT 'displayName',
       mail_attribute TEXT NOT NULL DEFAULT 'mail',
       group_attribute TEXT NOT NULL DEFAULT 'memberOf',
+      group_search_base TEXT NOT NULL DEFAULT '',
+      group_search_filter TEXT NOT NULL DEFAULT '(member={{userDn}})',
+      group_name_attribute TEXT NOT NULL DEFAULT 'cn',
       default_role TEXT NOT NULL DEFAULT 'editor'
         CHECK (default_role IN ('admin', 'editor')),
       tls_reject_unauthorized INTEGER NOT NULL DEFAULT 1
@@ -303,6 +308,19 @@ function createDatabase() {
       ON audit_logs (actor_username COLLATE NOCASE, created_at DESC);
     CREATE INDEX IF NOT EXISTS idx_audit_action
       ON audit_logs (action, created_at DESC);
+
+    CREATE TABLE IF NOT EXISTS api_call_counters (
+      day TEXT NOT NULL,
+      category TEXT NOT NULL
+        CHECK (category IN ('open', 'authenticated', 'anonymous')),
+      user_id TEXT NOT NULL DEFAULT '',
+      call_count INTEGER NOT NULL DEFAULT 0 CHECK (call_count >= 0),
+      last_called_at TEXT NOT NULL,
+      PRIMARY KEY (day, category, user_id)
+    ) WITHOUT ROWID;
+
+    CREATE INDEX IF NOT EXISTS idx_api_call_counters_user
+      ON api_call_counters (user_id, day);
   `);
 
   const userColumns = database
@@ -318,6 +336,18 @@ function createDatabase() {
       "ALTER TABLE users ADD COLUMN groups_json TEXT NOT NULL DEFAULT '[]'",
     );
   }
+  if (!userColumns.some((column) => column.name === "is_bootstrap_admin")) {
+    database.exec(`
+      ALTER TABLE users
+      ADD COLUMN is_bootstrap_admin INTEGER NOT NULL DEFAULT 0
+        CHECK (is_bootstrap_admin IN (0, 1))
+    `);
+  }
+  database.exec(`
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_users_bootstrap_admin
+      ON users (is_bootstrap_admin)
+      WHERE is_bootstrap_admin = 1
+  `);
 
   const ldapColumns = database
     .prepare("PRAGMA table_info(ldap_config)")
@@ -332,6 +362,24 @@ function createDatabase() {
     database.exec(`
       ALTER TABLE ldap_config
       ADD COLUMN group_attribute TEXT NOT NULL DEFAULT 'memberOf'
+    `);
+  }
+  if (!ldapColumns.some((column) => column.name === "group_search_base")) {
+    database.exec(`
+      ALTER TABLE ldap_config
+      ADD COLUMN group_search_base TEXT NOT NULL DEFAULT ''
+    `);
+  }
+  if (!ldapColumns.some((column) => column.name === "group_search_filter")) {
+    database.exec(`
+      ALTER TABLE ldap_config
+      ADD COLUMN group_search_filter TEXT NOT NULL DEFAULT '(member={{userDn}})'
+    `);
+  }
+  if (!ldapColumns.some((column) => column.name === "group_name_attribute")) {
+    database.exec(`
+      ALTER TABLE ldap_config
+      ADD COLUMN group_name_attribute TEXT NOT NULL DEFAULT 'cn'
     `);
   }
 

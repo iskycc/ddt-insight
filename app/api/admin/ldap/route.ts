@@ -29,6 +29,9 @@ export async function PUT(request: NextRequest) {
     displayNameAttribute?: string;
     mailAttribute?: string;
     groupAttribute?: string;
+    groupSearchBase?: string;
+    groupSearchFilter?: string;
+    groupNameAttribute?: string;
     defaultRole?: UserRole;
     tlsRejectUnauthorized?: boolean;
     connectTimeoutMs?: number;
@@ -52,6 +55,9 @@ export async function PUT(request: NextRequest) {
         displayNameAttribute: body.displayNameAttribute ?? "displayName",
         mailAttribute: body.mailAttribute ?? "mail",
         groupAttribute: body.groupAttribute ?? "memberOf",
+        groupSearchBase: body.groupSearchBase ?? "",
+        groupSearchFilter: body.groupSearchFilter ?? "(member={{userDn}})",
+        groupNameAttribute: body.groupNameAttribute ?? "cn",
         defaultRole: body.defaultRole ?? "editor",
         tlsRejectUnauthorized: body.tlsRejectUnauthorized !== false,
         connectTimeoutMs: Number(body.connectTimeoutMs ?? 5000),
@@ -67,6 +73,8 @@ export async function PUT(request: NextRequest) {
         defaultRole: config.defaultRole,
         mailAttribute: config.mailAttribute,
         groupAttribute: config.groupAttribute,
+        groupSearchEnabled: Boolean(config.groupSearchBase),
+        groupNameAttribute: config.groupNameAttribute,
         tlsVerification: config.tlsRejectUnauthorized,
       },
     });

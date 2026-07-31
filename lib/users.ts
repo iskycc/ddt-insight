@@ -12,6 +12,7 @@ interface UserRow {
   provider: "local" | "ldap";
   role: UserRole;
   enabled: number;
+  is_bootstrap_admin: number;
   password_hash: string | null;
   last_login_at: string | null;
   created_at: string;
@@ -38,6 +39,7 @@ function toRecord(row: UserRow): UserRecord {
     provider: row.provider,
     role: row.role,
     enabled: Boolean(row.enabled),
+    isBootstrapAdmin: Boolean(row.is_bootstrap_admin),
     lastLoginAt: row.last_login_at,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -61,17 +63,60 @@ export function validatePassword(password: string) {
 
 export function ensureBootstrapAdmin() {
   const username = validateUsername(process.env.ADMIN_USERNAME ?? "admin");
-  const existing = db.prepare("SELECT 1 FROM users LIMIT 1").get();
-  if (existing) return;
+  type BootstrapCandidate = {
+    id: string;
+    role: UserRole;
+    enabled: number;
+    is_bootstrap_admin: number;
+  };
+  const marked = db
+    .prepare(`
+      SELECT id, role, enabled, is_bootstrap_admin FROM users
+      WHERE is_bootstrap_admin = 1
+      LIMIT 1
+    `)
+    .get() as BootstrapCandidate | undefined;
+  const candidate =
+    marked ??
+    (db
+      .prepare(`
+        SELECT id, role, enabled, is_bootstrap_admin FROM users
+        WHERE provider = 'local' AND username = ? COLLATE NOCASE
+        LIMIT 1
+      `)
+      .get(username) as BootstrapCandidate | undefined) ??
+    (db
+      .prepare(`
+        SELECT id, role, enabled, is_bootstrap_admin FROM users
+        WHERE provider = 'local'
+        ORDER BY created_at, id
+        LIMIT 1
+      `)
+      .get() as BootstrapCandidate | undefined);
+
+  if (candidate) {
+    if (
+      candidate.role !== "admin" ||
+      !candidate.enabled ||
+      !candidate.is_bootstrap_admin
+    ) {
+      db.prepare(`
+        UPDATE users
+        SET role = 'admin', enabled = 1, is_bootstrap_admin = 1
+        WHERE id = ?
+      `).run(candidate.id);
+    }
+    return;
+  }
 
   const password = process.env.ADMIN_PASSWORD ?? "insight-admin";
   validatePassword(password);
   const now = new Date().toISOString();
   db.prepare(`
     INSERT INTO users (
-      id, username, display_name, provider, role, enabled,
+      id, username, display_name, provider, role, enabled, is_bootstrap_admin,
       password_hash, created_at, updated_at
-    ) VALUES (?, ?, ?, 'local', 'admin', 1, ?, ?, ?)
+    ) VALUES (?, ?, ?, 'local', 'admin', 1, 1, ?, ?, ?)
   `).run(randomUUID(), username, username, hashPassword(password), now, now);
 }
 
@@ -81,7 +126,7 @@ export function listUsers() {
     db
       .prepare(`
         SELECT id, username, display_name, email, groups_json,
-               provider, role, enabled,
+               provider, role, enabled, is_bootstrap_admin,
                password_hash, last_login_at, created_at, updated_at
         FROM users
         ORDER BY
@@ -97,7 +142,7 @@ export function findUserById(id: string) {
   const row = db
     .prepare(`
       SELECT id, username, display_name, email, groups_json,
-             provider, role, enabled,
+             provider, role, enabled, is_bootstrap_admin,
              password_hash, last_login_at, created_at, updated_at
       FROM users WHERE id = ? LIMIT 1
     `)
@@ -110,7 +155,7 @@ export function findUserForAuthentication(username: string) {
   return db
     .prepare(`
       SELECT id, username, display_name, email, groups_json,
-             provider, role, enabled,
+             provider, role, enabled, is_bootstrap_admin,
              password_hash, last_login_at, created_at, updated_at
       FROM users WHERE username = ? COLLATE NOCASE LIMIT 1
     `)
@@ -259,6 +304,9 @@ export function updateUser(
   const role = input.role ?? current.role;
   const enabled = input.enabled ?? current.enabled;
   if (!["admin", "editor"].includes(role)) throw new Error("用户角色不正确");
+  if (current.isBootstrapAdmin && (role !== "admin" || !enabled)) {
+    throw new Error("默认管理员必须保持管理员角色并处于启用状态");
+  }
 
   if (
     current.role === "admin" &&
@@ -295,10 +343,52 @@ export function updateUser(
   return findUserById(id)!;
 }
 
+export function updateOwnProfile(
+  id: string,
+  input: {
+    displayName?: string;
+    email?: string;
+  },
+) {
+  const current = findUserById(id);
+  if (!current) throw new Error("用户不存在");
+  if (current.provider === "ldap") {
+    throw new Error("LDAP 用户资料由目录服务同步，不能在平台修改");
+  }
+
+  const displayName =
+    input.displayName === undefined
+      ? current.displayName
+      : input.displayName.trim();
+  if (!displayName) throw new Error("显示名称不能为空");
+  if (displayName.length > 128) throw new Error("显示名称不能超过 128 个字符");
+
+  const email =
+    input.email === undefined ? current.email : input.email.trim();
+  if (email.length > 320) throw new Error("邮箱不能超过 320 个字符");
+  if (
+    email &&
+    (!/^[^\s@]+@[^\s@]+$/.test(email) ||
+      /[\u0000-\u001f\u007f]/.test(email))
+  ) {
+    throw new Error("邮箱格式不正确");
+  }
+
+  db.prepare(`
+    UPDATE users
+    SET display_name = ?, email = ?, updated_at = ?
+    WHERE id = ?
+  `).run(displayName, email, new Date().toISOString(), id);
+  return findUserById(id)!;
+}
+
 export function deleteUser(id: string, actorId: string) {
   if (id === actorId) throw new Error("不能删除当前登录账户");
   const current = findUserById(id);
   if (!current) throw new Error("用户不存在");
+  if (current.isBootstrapAdmin) {
+    throw new Error("默认管理员不能删除");
+  }
   if (
     current.role === "admin" &&
     current.enabled &&

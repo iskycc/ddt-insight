@@ -10,6 +10,7 @@ import {
   KeyRound,
   LoaderCircle,
   Network,
+  Pencil,
   Plus,
   RefreshCw,
   Save,
@@ -27,6 +28,7 @@ import {
   useMemo,
   useState,
 } from "react";
+import { useRouter } from "next/navigation";
 import {
   CustomCheckbox,
   CustomSelect,
@@ -38,6 +40,8 @@ import type {
   UserRecord,
   UserRole,
 } from "@/lib/types";
+import { displayInitial } from "@/lib/display-text";
+import { ldapGroupLabel } from "@/lib/ldap-group";
 
 type ToastHandler = (message: string) => void;
 const roleOptions = [
@@ -69,11 +73,6 @@ function localDate(value: string | null) {
   }).format(new Date(value));
 }
 
-function ldapGroupLabel(group: string) {
-  const commonName = /^cn=([^,]+)/i.exec(group)?.[1];
-  return commonName || group;
-}
-
 export function UserManagement({
   currentUserId,
   onToast,
@@ -81,10 +80,12 @@ export function UserManagement({
   currentUserId: string;
   onToast: ToastHandler;
 }) {
+  const router = useRouter();
   const [users, setUsers] = useState<UserRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [createOpen, setCreateOpen] = useState(false);
+  const [editUser, setEditUser] = useState<UserRecord | null>(null);
   const [resetUser, setResetUser] = useState<UserRecord | null>(null);
   const [deleteUser, setDeleteUser] = useState<UserRecord | null>(null);
   const [busyId, setBusyId] = useState("");
@@ -248,11 +249,12 @@ export function UserManagement({
             users.map((user) => (
               <div className="admin-table-row" key={user.id}>
                 <span className="user-identity">
-                  <i>{user.displayName.slice(0, 1).toUpperCase()}</i>
+                  <i>{displayInitial(user.displayName)}</i>
                   <p>
                     <strong>
                       {user.displayName}
                       {user.id === currentUserId && <em>当前用户</em>}
+                      {user.isBootstrapAdmin && <em>默认管理员</em>}
                     </strong>
                     <small>{user.username}</small>
                   </p>
@@ -263,7 +265,9 @@ export function UserManagement({
                       <strong title={user.email || "LDAP 未返回邮箱"}>
                         {user.email || "未获取 mail"}
                       </strong>
-                      <small title={user.groups.join("\n")}>
+                      <small
+                        title={user.groups.map(ldapGroupLabel).join("\n")}
+                      >
                         {user.groups.length
                           ? `${user.groups
                               .slice(0, 2)
@@ -292,7 +296,11 @@ export function UserManagement({
                   <CustomSelect
                     value={user.role}
                     ariaLabel={`修改 ${user.username} 的角色`}
-                    disabled={busyId === user.id || user.id === currentUserId}
+                    disabled={
+                      busyId === user.id ||
+                      user.id === currentUserId ||
+                      user.isBootstrapAdmin
+                    }
                     options={compactRoleOptions}
                     onChange={(value) =>
                       void update(user, {
@@ -308,7 +316,11 @@ export function UserManagement({
                     type="button"
                     role="switch"
                     aria-checked={user.enabled}
-                    disabled={busyId === user.id || user.id === currentUserId}
+                    disabled={
+                      busyId === user.id ||
+                      user.id === currentUserId ||
+                      user.isBootstrapAdmin
+                    }
                     onClick={() => void update(user, { enabled: !user.enabled })}
                   >
                     <i />
@@ -316,6 +328,16 @@ export function UserManagement({
                   </button>
                 </span>
                 <span className="admin-row-actions">
+                  <button
+                    className="icon-button"
+                    type="button"
+                    title="修改显示名称"
+                    aria-label={`修改 ${user.username} 的显示名称`}
+                    disabled={busyId === user.id}
+                    onClick={() => setEditUser(user)}
+                  >
+                    <Pencil size={15} />
+                  </button>
                   {user.provider === "local" && (
                     <button
                       className="icon-button"
@@ -331,9 +353,17 @@ export function UserManagement({
                   <button
                     className="icon-button danger"
                     type="button"
-                    title="删除用户"
+                    title={
+                      user.isBootstrapAdmin
+                        ? "默认管理员不能删除"
+                        : "删除用户"
+                    }
                     aria-label={`删除用户 ${user.username}`}
-                    disabled={busyId === user.id || user.id === currentUserId}
+                    disabled={
+                      busyId === user.id ||
+                      user.id === currentUserId ||
+                      user.isBootstrapAdmin
+                    }
                     onClick={() => setDeleteUser(user)}
                   >
                     <Trash2 size={15} />
@@ -355,6 +385,22 @@ export function UserManagement({
             setUsers((current) => [...current, user]);
             setCreateOpen(false);
             onToast(`已创建用户 ${user.username}`);
+          }}
+        />
+      )}
+
+      {editUser && (
+        <UserDialog
+          mode="edit"
+          user={editUser}
+          onClose={() => setEditUser(null)}
+          onComplete={(user) => {
+            setUsers((current) =>
+              current.map((item) => (item.id === user.id ? user : item)),
+            );
+            setEditUser(null);
+            if (user.id === currentUserId) router.refresh();
+            onToast(`已更新 ${user.username} 的显示名称`);
           }}
         />
       )}
@@ -437,13 +483,13 @@ function UserDialog({
   onClose,
   onComplete,
 }: {
-  mode: "create" | "reset";
+  mode: "create" | "edit" | "reset";
   user?: UserRecord;
   onClose: () => void;
   onComplete: (user: UserRecord) => void;
 }) {
   const [username, setUsername] = useState("");
-  const [displayName, setDisplayName] = useState("");
+  const [displayName, setDisplayName] = useState(user?.displayName ?? "");
   const [role, setRole] = useState<UserRole>("editor");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -463,7 +509,9 @@ function UserDialog({
           body: JSON.stringify(
             mode === "create"
               ? { username, displayName, role, password }
-              : { password },
+              : mode === "edit"
+                ? { displayName }
+                : { password },
           ),
         },
       );
@@ -471,7 +519,11 @@ function UserDialog({
         throw new Error(
           await responseError(
             response,
-            mode === "create" ? "创建用户失败" : "重置密码失败",
+            mode === "create"
+              ? "创建用户失败"
+              : mode === "edit"
+                ? "修改显示名称失败"
+                : "重置密码失败",
           ),
         );
       }
@@ -507,15 +559,27 @@ function UserDialog({
           <X size={18} />
         </button>
         <span className="admin-modal-icon">
-          {mode === "create" ? <UserRound size={22} /> : <KeyRound size={22} />}
+          {mode === "create" ? (
+            <UserRound size={22} />
+          ) : mode === "edit" ? (
+            <Pencil size={22} />
+          ) : (
+            <KeyRound size={22} />
+          )}
         </span>
         <h2 id="user-dialog-title">
-          {mode === "create" ? "新建本地用户" : `重置 ${user?.username} 的密码`}
+          {mode === "create"
+            ? "新建本地用户"
+            : mode === "edit"
+              ? `修改 ${user?.username} 的显示名称`
+              : `重置 ${user?.username} 的密码`}
         </h2>
         <p>
           {mode === "create"
             ? "创建后用户可立即登录工作台。"
-            : "新密码保存后立即生效，旧密码将不可使用。"}
+            : mode === "edit"
+              ? "用户名保持不变，新的显示名称会用于工作台和操作记录。"
+              : "新密码保存后立即生效，旧密码将不可使用。"}
         </p>
 
         <form className="admin-form" onSubmit={submit}>
@@ -553,28 +617,43 @@ function UserDialog({
               </div>
             </>
           )}
-          <label>
-            <span>{mode === "create" ? "初始密码" : "新密码"}</span>
-            <span className="password-input">
+          {mode === "edit" && (
+            <label>
+              <span>显示名称</span>
               <input
-                value={password}
-                onChange={(event) => setPassword(event.target.value)}
-                type={showPassword ? "text" : "password"}
-                autoComplete="new-password"
-                placeholder="至少 8 个字符"
-                minLength={8}
+                value={displayName}
+                onChange={(event) => setDisplayName(event.target.value)}
+                placeholder={user?.username}
+                maxLength={128}
                 required
-                autoFocus={mode === "reset"}
+                autoFocus
               />
-              <button
-                type="button"
-                aria-label={showPassword ? "隐藏密码" : "显示密码"}
-                onClick={() => setShowPassword((current) => !current)}
-              >
-                {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-              </button>
-            </span>
-          </label>
+            </label>
+          )}
+          {mode !== "edit" && (
+            <label>
+              <span>{mode === "create" ? "初始密码" : "新密码"}</span>
+              <span className="password-input">
+                <input
+                  value={password}
+                  onChange={(event) => setPassword(event.target.value)}
+                  type={showPassword ? "text" : "password"}
+                  autoComplete="new-password"
+                  placeholder="至少 8 个字符"
+                  minLength={8}
+                  required
+                  autoFocus={mode === "reset"}
+                />
+                <button
+                  type="button"
+                  aria-label={showPassword ? "隐藏密码" : "显示密码"}
+                  onClick={() => setShowPassword((current) => !current)}
+                >
+                  {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                </button>
+              </span>
+            </label>
+          )}
 
           {error && <div className="form-error">{error}</div>}
 
@@ -612,6 +691,9 @@ const emptyLdapConfig: LdapConfigPublic = {
   displayNameAttribute: "displayName",
   mailAttribute: "mail",
   groupAttribute: "memberOf",
+  groupSearchBase: "",
+  groupSearchFilter: "(member={{userDn}})",
+  groupNameAttribute: "cn",
   defaultRole: "editor",
   tlsRejectUnauthorized: true,
   connectTimeoutMs: 5000,
@@ -698,7 +780,11 @@ export function LdapSettings({ onToast }: { onToast: ToastHandler }) {
       if (!response.ok) {
         throw new Error(await responseError(response, "LDAP 连接测试失败"));
       }
-      onToast("LDAP 连接与 Base DN 验证成功");
+      onToast(
+        config.groupSearchBase
+          ? "LDAP 连接、用户与 Group Base DN 验证成功"
+          : "LDAP 连接与用户 Base DN 验证成功",
+      );
     } catch (testError) {
       setError(
         testError instanceof Error ? testError.message : "LDAP 连接测试失败",
@@ -887,29 +973,78 @@ export function LdapSettings({ onToast }: { onToast: ToastHandler }) {
               />
               <small>留空则不读取邮箱；常见属性为 mail。</small>
             </label>
-            <label>
-              <span>Group 属性（多值）</span>
-              <input
-                value={config.groupAttribute}
-                onChange={(event) =>
-                  field("groupAttribute", event.target.value)
+            <div className="admin-field">
+              <span>新 LDAP 用户默认角色</span>
+              <CustomSelect
+                value={config.defaultRole}
+                ariaLabel="选择新 LDAP 用户默认角色"
+                options={roleOptions}
+                onChange={(value) =>
+                  field("defaultRole", value as UserRole)
                 }
-                placeholder="memberOf"
               />
-              <small>读取用户条目的组成员属性；AD 通常使用 memberOf。</small>
+            </div>
+          </div>
+
+          <div className="form-section-heading">
+            <span>04</span>
+            <div>
+              <strong>Group 检索与展示</strong>
+              <small>
+                配置独立检索后只保存 Group 名称，不再展示完整 OU/CN 路径。
+              </small>
+            </div>
+          </div>
+          <label>
+            <span>Group Search Base</span>
+            <input
+              value={config.groupSearchBase}
+              onChange={(event) =>
+                field("groupSearchBase", event.target.value)
+              }
+              placeholder="ou=groups,dc=example,dc=local"
+            />
+            <small>留空时使用下方用户 Group 属性兼容读取。</small>
+          </label>
+          <div className="form-grid two">
+            <label>
+              <span>Group Search Filter</span>
+              <input
+                value={config.groupSearchFilter}
+                onChange={(event) =>
+                  field("groupSearchFilter", event.target.value)
+                }
+                placeholder="(&(objectClass=group)(member={{userDn}}))"
+              />
+              <small>
+                必须包含 {"{{userDn}}"} 或 {"{{username}}"} 占位符。
+              </small>
+            </label>
+            <label>
+              <span>Group 名称属性</span>
+              <input
+                value={config.groupNameAttribute}
+                onChange={(event) =>
+                  field("groupNameAttribute", event.target.value)
+                }
+                placeholder="cn"
+              />
+              <small>查询结果中用于展示和同步的属性，通常为 cn。</small>
             </label>
           </div>
-          <div className="admin-field">
-            <span>新 LDAP 用户默认角色</span>
-            <CustomSelect
-              value={config.defaultRole}
-              ariaLabel="选择新 LDAP 用户默认角色"
-              options={roleOptions}
-              onChange={(value) =>
-                field("defaultRole", value as UserRole)
+          <label>
+            <span>用户 Group 属性（兼容模式）</span>
+            <input
+              value={config.groupAttribute}
+              onChange={(event) =>
+                field("groupAttribute", event.target.value)
               }
+              placeholder="memberOf"
             />
-          </div>
+            <small>
+              未设置 Group Search Base 时读取用户条目的多值属性；AD 通常为 memberOf。
+            </small>
+          </label>
         </div>
 
         <div className="ldap-actions">

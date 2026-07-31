@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { recordApiCall } from "@/lib/api-stats";
 import { auditRequest } from "@/lib/audit";
 import { isCellValue } from "@/lib/case-data";
 import { errorResponse, requireApiSession } from "@/lib/http";
@@ -29,6 +30,7 @@ export async function GET(
   _request: NextRequest,
   context: { params: Promise<{ caseId: string }> },
 ) {
+  recordApiCall("open");
   const startedAt = performance.now();
   const { caseId } = await context.params;
   const data = getCase(caseId);

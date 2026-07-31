@@ -75,6 +75,7 @@ import {
   CaseManagementTools,
 } from "@/components/case-management-tools";
 import { MaintenanceCenter } from "@/components/maintenance-center";
+import { ProfileSettings } from "@/components/profile-settings";
 import type {
   CaseData,
   CaseHistoryItem,
@@ -83,6 +84,7 @@ import type {
   UserProvider,
   UserRole,
 } from "@/lib/types";
+import { displayInitial } from "@/lib/display-text";
 import {
   groovyClientExample,
   java8ClientExample,
@@ -100,6 +102,7 @@ type WorkspaceView =
   | "caseTemplates"
   | "overview"
   | "api"
+  | "profile"
   | "users"
   | "ldap"
   | "imports"
@@ -162,6 +165,7 @@ const viewLabels: Record<WorkspaceView, string> = {
   caseTemplates: "字段模板",
   overview: "数据概览",
   api: "开放 API",
+  profile: "个人信息",
   users: "用户管理",
   ldap: "LDAP",
   imports: "导入来源",
@@ -185,6 +189,7 @@ export function WorkspaceClient({
   provider: UserProvider;
 }) {
   const router = useRouter();
+  const [currentDisplayName, setCurrentDisplayName] = useState(displayName);
   const [view, setView] = useState<WorkspaceView>("cases");
   const [mobileNavigationOpen, setMobileNavigationOpen] = useState(false);
   const [sidebarHidden, setSidebarHidden] = useState(false);
@@ -204,6 +209,10 @@ export function WorkspaceClient({
   const [toast, setToast] = useState("");
   const [deepLinkReady, setDeepLinkReady] = useState(false);
   const requestSequence = useRef(0);
+
+  useEffect(() => {
+    setCurrentDisplayName(displayName);
+  }, [displayName]);
 
   useEffect(() => {
     setSidebarHidden(
@@ -475,6 +484,15 @@ export function WorkspaceClient({
             开放 API
             <span className="nav-open-pill">OPEN</span>
           </button>
+          <small>账户</small>
+          <button
+            className={classNames(view === "profile" && "active")}
+            type="button"
+            onClick={() => selectView("profile")}
+          >
+            <UserRound size={18} />
+            个人信息
+          </button>
           {role === "admin" && (
             <>
               <small>系统管理</small>
@@ -550,9 +568,9 @@ export function WorkspaceClient({
         </div>
 
         <div className="sidebar-user">
-          <span>{displayName.slice(0, 1).toUpperCase()}</span>
+          <span>{displayInitial(currentDisplayName)}</span>
           <p>
-            <strong>{displayName}</strong>
+            <strong title={currentDisplayName}>{currentDisplayName}</strong>
             <small>
               {role === "admin" ? "系统管理员" : "用例编辑员"} ·{" "}
               {provider === "ldap" ? "LDAP" : username}
@@ -758,6 +776,15 @@ export function WorkspaceClient({
         )}
 
         {view === "api" && <ApiGuide />}
+
+        {view === "profile" && (
+          <ProfileSettings
+            onProfileUpdated={(profile) =>
+              setCurrentDisplayName(profile.displayName)
+            }
+            onToast={setToast}
+          />
+        )}
 
         {view === "users" && role === "admin" && (
           <UserManagement currentUserId={userId} onToast={setToast} />

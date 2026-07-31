@@ -21,6 +21,9 @@ interface LdapConfigRow {
   display_name_attribute: string;
   mail_attribute: string;
   group_attribute: string;
+  group_search_base: string;
+  group_search_filter: string;
+  group_name_attribute: string;
   default_role: UserRole;
   tls_reject_unauthorized: number;
   connect_timeout_ms: number;
@@ -38,6 +41,9 @@ const defaultConfig = {
   displayNameAttribute: "displayName",
   mailAttribute: "mail",
   groupAttribute: "memberOf",
+  groupSearchBase: "",
+  groupSearchFilter: "(member={{userDn}})",
+  groupNameAttribute: "cn",
   defaultRole: "editor" as UserRole,
   tlsRejectUnauthorized: true,
   connectTimeoutMs: 5000,
@@ -50,7 +56,8 @@ function getConfigRow() {
     .prepare(`
       SELECT enabled, url, bind_dn, bind_password_encrypted, user_base_dn,
              user_filter, display_name_attribute, mail_attribute,
-             group_attribute, default_role,
+             group_attribute, group_search_base, group_search_filter,
+             group_name_attribute, default_role,
              tls_reject_unauthorized, connect_timeout_ms, updated_at, updated_by
       FROM ldap_config WHERE id = 1
     `)
@@ -70,6 +77,9 @@ export function getLdapConfig(): LdapConfigPublic {
     displayNameAttribute: row.display_name_attribute,
     mailAttribute: row.mail_attribute,
     groupAttribute: row.group_attribute,
+    groupSearchBase: row.group_search_base,
+    groupSearchFilter: row.group_search_filter,
+    groupNameAttribute: row.group_name_attribute,
     defaultRole: row.default_role,
     tlsRejectUnauthorized: Boolean(row.tls_reject_unauthorized),
     connectTimeoutMs: row.connect_timeout_ms,
@@ -110,6 +120,9 @@ function validateConfig(input: {
   displayNameAttribute: string;
   mailAttribute: string;
   groupAttribute: string;
+  groupSearchBase: string;
+  groupSearchFilter: string;
+  groupNameAttribute: string;
   defaultRole: UserRole;
   connectTimeoutMs: number;
   bindDn?: string;
@@ -128,10 +141,26 @@ function validateConfig(input: {
     throw new Error("用户过滤器必须包含 {{username}} 占位符");
   }
   if (input.userFilter.length > 1024) throw new Error("用户过滤器过长");
+  if (input.groupSearchBase.length > 2048) {
+    throw new Error("Group Base DN 过长");
+  }
+  if (input.groupSearchFilter.length > 1024) {
+    throw new Error("Group 过滤器过长");
+  }
+  if (
+    input.groupSearchBase &&
+    !input.groupSearchFilter.includes("{{userDn}}") &&
+    !input.groupSearchFilter.includes("{{username}}")
+  ) {
+    throw new Error(
+      "Group 过滤器必须包含 {{userDn}} 或 {{username}} 占位符",
+    );
+  }
   const attributes = [
     ["显示名称", input.displayNameAttribute, true],
     ["邮箱", input.mailAttribute, false],
     ["Group", input.groupAttribute, false],
+    ["Group 名称", input.groupNameAttribute, Boolean(input.groupSearchBase)],
   ] as const;
   for (const [label, attribute, required] of attributes) {
     if (required && !attribute) throw new Error(`${label}属性不能为空`);
@@ -164,6 +193,9 @@ export function saveLdapConfig(
     displayNameAttribute: string;
     mailAttribute: string;
     groupAttribute: string;
+    groupSearchBase: string;
+    groupSearchFilter: string;
+    groupNameAttribute: string;
     defaultRole: UserRole;
     tlsRejectUnauthorized: boolean;
     connectTimeoutMs: number;
@@ -179,6 +211,9 @@ export function saveLdapConfig(
     displayNameAttribute: input.displayNameAttribute.trim(),
     mailAttribute: input.mailAttribute.trim(),
     groupAttribute: input.groupAttribute.trim(),
+    groupSearchBase: input.groupSearchBase.trim(),
+    groupSearchFilter: input.groupSearchFilter.trim(),
+    groupNameAttribute: input.groupNameAttribute.trim(),
   };
   validateConfig(normalized);
 
@@ -195,9 +230,9 @@ export function saveLdapConfig(
     INSERT INTO ldap_config (
       id, enabled, url, bind_dn, bind_password_encrypted, user_base_dn,
       user_filter, display_name_attribute, mail_attribute, group_attribute,
-      default_role,
+      group_search_base, group_search_filter, group_name_attribute, default_role,
       tls_reject_unauthorized, connect_timeout_ms, updated_at, updated_by
-    ) VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ) VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(id) DO UPDATE SET
       enabled = excluded.enabled,
       url = excluded.url,
@@ -208,6 +243,9 @@ export function saveLdapConfig(
       display_name_attribute = excluded.display_name_attribute,
       mail_attribute = excluded.mail_attribute,
       group_attribute = excluded.group_attribute,
+      group_search_base = excluded.group_search_base,
+      group_search_filter = excluded.group_search_filter,
+      group_name_attribute = excluded.group_name_attribute,
       default_role = excluded.default_role,
       tls_reject_unauthorized = excluded.tls_reject_unauthorized,
       connect_timeout_ms = excluded.connect_timeout_ms,
@@ -223,6 +261,9 @@ export function saveLdapConfig(
     normalized.displayNameAttribute,
     normalized.mailAttribute,
     normalized.groupAttribute,
+    normalized.groupSearchBase,
+    normalized.groupSearchFilter,
+    normalized.groupNameAttribute,
     normalized.defaultRole,
     normalized.tlsRejectUnauthorized ? 1 : 0,
     normalized.connectTimeoutMs,
@@ -237,6 +278,15 @@ function escapeFilterValue(value: string) {
     const code = character.charCodeAt(0).toString(16).padStart(2, "0");
     return `\\${code}`;
   });
+}
+
+function groupSearchFilter(
+  template: string,
+  input: { username: string; userDn: string },
+) {
+  return template
+    .replaceAll("{{username}}", escapeFilterValue(input.username))
+    .replaceAll("{{userDn}}", escapeFilterValue(input.userDn));
 }
 
 function privateConfig() {
@@ -257,10 +307,14 @@ function createClient(config: {
     url: config.url,
     timeout: config.connectTimeoutMs,
     connectTimeout: config.connectTimeoutMs,
-    tlsOptions: {
-      minVersion: "TLSv1.2",
-      rejectUnauthorized: config.tlsRejectUnauthorized,
-    },
+    ...(config.url.toLocaleLowerCase("en-US").startsWith("ldaps://")
+      ? {
+          tlsOptions: {
+            minVersion: "TLSv1.2" as const,
+            rejectUnauthorized: config.tlsRejectUnauthorized,
+          },
+        }
+      : {}),
   });
 }
 
@@ -328,7 +382,19 @@ export async function testLdapConnection() {
       sizeLimit: 1,
       attributes: ["1.1"],
     });
-    return { ok: true };
+    if (config.groupSearchBase) {
+      await client.search(config.groupSearchBase, {
+        scope: "base",
+        filter: "(objectClass=*)",
+        sizeLimit: 1,
+        attributes: ["1.1"],
+      });
+    }
+    return {
+      ok: true,
+      userBaseValidated: true,
+      groupBaseValidated: Boolean(config.groupSearchBase),
+    };
   } finally {
     await unbindQuietly(client);
   }
@@ -364,7 +430,7 @@ export async function authenticateLdapUser(
           [
             config.displayNameAttribute,
             config.mailAttribute,
-            config.groupAttribute,
+            config.groupSearchBase ? "" : config.groupAttribute,
           ].filter(Boolean),
         ),
       ],
@@ -372,14 +438,38 @@ export async function authenticateLdapUser(
     if (searchEntries.length !== 1) return null;
 
     const entry = searchEntries[0];
+    const directGroups = uniqueAttributes(
+      attributeTexts(entry, config.groupAttribute),
+    );
     await client.bind(entry.dn, password);
+
+    let groups = directGroups;
+    if (config.groupSearchBase) {
+      await bindService(client, config);
+      const { searchEntries: groupEntries } = await client.search(
+        config.groupSearchBase,
+        {
+          scope: "sub",
+          filter: groupSearchFilter(config.groupSearchFilter, {
+            username,
+            userDn: entry.dn,
+          }),
+          sizeLimit: 512,
+          attributes: [config.groupNameAttribute],
+        },
+      );
+      groups = uniqueAttributes(
+        groupEntries.flatMap((group) =>
+          attributeTexts(group, config.groupNameAttribute),
+        ),
+      );
+    }
+
     return upsertLdapUser({
       username,
       displayName: attributeText(entry, config.displayNameAttribute) || username,
       email: attributeText(entry, config.mailAttribute),
-      groups: uniqueAttributes(
-        attributeTexts(entry, config.groupAttribute),
-      ),
+      groups,
       defaultRole: config.defaultRole,
     });
   } catch {

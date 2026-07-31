@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { recordApiCall } from "@/lib/api-stats";
 import { getCase } from "@/lib/repository";
 
 export const dynamic = "force-dynamic";
@@ -23,6 +24,7 @@ export async function OPTIONS() {
 }
 
 export async function GET(request: NextRequest) {
+  recordApiCall("open");
   const startedAt = performance.now();
   const caseId = request.nextUrl.searchParams.get("caseId")?.trim();
 

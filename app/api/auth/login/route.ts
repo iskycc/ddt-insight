@@ -4,6 +4,7 @@ import {
   authenticationProviderFor,
   setSessionCookie,
 } from "@/lib/auth";
+import { recordApiCall } from "@/lib/api-stats";
 import { auditRequest } from "@/lib/audit";
 import { errorResponse } from "@/lib/http";
 
@@ -13,6 +14,7 @@ export async function POST(request: NextRequest) {
   try {
     body = (await request.json()) as typeof body;
   } catch {
+    recordApiCall("anonymous");
     return errorResponse("请求格式不正确");
   }
 
@@ -20,6 +22,7 @@ export async function POST(request: NextRequest) {
   const password = body.password ?? "";
 
   if (!username || username.length > 128 || password.length > 512) {
+    recordApiCall("anonymous");
     auditRequest(request, null, {
       actorUsername: username || "anonymous",
       action: "auth.login",
@@ -32,6 +35,7 @@ export async function POST(request: NextRequest) {
 
   const user = await authenticateCredentials(username, password);
   if (!user) {
+    recordApiCall("anonymous");
     auditRequest(request, null, {
       actorUsername: username || "anonymous",
       actorProvider: authenticationProviderFor(username),
@@ -44,6 +48,7 @@ export async function POST(request: NextRequest) {
   }
 
   await setSessionCookie(user);
+  recordApiCall("authenticated", user.id);
   auditRequest(request, user, {
     action: "auth.login",
     resourceType: "session",
