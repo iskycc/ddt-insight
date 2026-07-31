@@ -621,7 +621,12 @@ export function MaintenanceCenter({
             </form>
           </section>
 
-          <section className={`${styles.panel} ${styles.backupList}`}>
+          <section
+            className={`${styles.panel} ${styles.backupList} ${
+              loading && backups.length ? styles.refreshing : ""
+            }`}
+            aria-busy={loading}
+          >
             <div className={styles.panelHeading}>
               <span className={styles.iconGreen}>
                 <Archive size={19} />
@@ -631,7 +636,7 @@ export function MaintenanceCenter({
                 <p>{backups.length} 个加密备份，占用 {formatBytes(diagnostics?.storage.backupBytes ?? 0)}</p>
               </div>
             </div>
-            {loading ? (
+            {loading && backups.length === 0 ? (
               <div className={styles.empty}>
                 <LoaderCircle className="spin" size={19} />
                 正在读取备份…
@@ -868,7 +873,12 @@ export function MaintenanceCenter({
       )}
 
       {section === "recycle" && (
-        <section className={styles.panel}>
+        <section
+          className={`${styles.panel} ${
+            loading && deletedCases.length ? styles.refreshing : ""
+          }`}
+          aria-busy={loading}
+        >
           <div className={styles.recycleHeading}>
             <div className={styles.panelHeading}>
               <span className={styles.iconOrange}>
@@ -891,7 +901,7 @@ export function MaintenanceCenter({
             </form>
           </div>
 
-          {loading ? (
+          {loading && deletedCases.length === 0 ? (
             <div className={styles.empty}>
               <LoaderCircle className="spin" size={19} />
               正在读取回收站…

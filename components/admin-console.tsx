@@ -173,7 +173,12 @@ export function UserManagement({
         </button>
       </div>
 
-      <div className="admin-summary-grid">
+      <div
+        className={`admin-summary-grid${
+          loading && users.length === 0 ? " is-loading" : ""
+        }`}
+        aria-busy={loading}
+      >
         <article>
           <span className="admin-summary-icon blue">
             <Users size={19} />
@@ -230,7 +235,12 @@ export function UserManagement({
           </button>
         </div>
 
-        <div className="admin-table user-table">
+        <div
+          className={`admin-table user-table${
+            loading && users.length ? " is-refreshing" : ""
+          }`}
+          aria-busy={loading}
+        >
           <div className="admin-table-head">
             <span>用户</span>
             <span>目录信息</span>
@@ -240,7 +250,7 @@ export function UserManagement({
             <span>状态</span>
             <span>操作</span>
           </div>
-          {loading ? (
+          {loading && users.length === 0 ? (
             <div className="admin-table-empty">
               <LoaderCircle className="spin" size={20} />
               正在读取账户目录…
@@ -818,7 +828,10 @@ export function LdapSettings({ onToast }: { onToast: ToastHandler }) {
         </div>
       )}
 
-      <article className="admin-card ldap-card">
+      <article
+        className={`admin-card ldap-card${loading ? " is-refreshing" : ""}`}
+        aria-busy={loading}
+      >
         <div className="admin-card-heading">
           <div>
             <h2>连接与认证</h2>
@@ -1246,7 +1259,12 @@ export function AuditLogView() {
           />
         </div>
 
-        <div className="admin-table audit-table">
+        <div
+          className={`admin-table audit-table${
+            loading && items.length ? " is-refreshing" : ""
+          }`}
+          aria-busy={loading}
+        >
           <div className="admin-table-head">
             <span>时间</span>
             <span>操作者</span>
@@ -1255,7 +1273,7 @@ export function AuditLogView() {
             <span>来源 IP</span>
             <span>结果</span>
           </div>
-          {loading ? (
+          {loading && items.length === 0 ? (
             <div className="admin-table-empty">
               <LoaderCircle className="spin" size={20} />
               正在查询审计日志…

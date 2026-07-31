@@ -177,7 +177,10 @@ export default async function HomePage() {
 
       <section className="overview section" id="overview">
         <div className="section-inner">
-          <div className="section-heading split-heading">
+          <div
+            className="section-heading split-heading"
+            data-motion-reveal
+          >
             <div>
               <span className="eyebrow">平台概览</span>
               <h2>数据状态，一目了然。</h2>
@@ -187,7 +190,7 @@ export default async function HomePage() {
             </p>
           </div>
 
-          <div className="stats-grid">
+          <div className="stats-grid" data-motion-reveal>
             <article className="stat-card stat-primary">
               <span className="stat-icon">
                 <Database size={20} />
@@ -223,7 +226,7 @@ export default async function HomePage() {
             </article>
           </div>
 
-          <div className="analytics-grid">
+          <div className="analytics-grid" data-motion-reveal>
             <article className="panel activity-panel">
               <div className="panel-heading">
                 <div>
@@ -299,7 +302,7 @@ export default async function HomePage() {
           </div>
 
           {stats.recentImports.length > 0 && (
-            <article className="recent-imports">
+            <article className="recent-imports" data-motion-reveal>
               <div>
                 <span className="eyebrow">最近导入</span>
                 <h3>数据流转记录</h3>
@@ -325,12 +328,15 @@ export default async function HomePage() {
 
       <section className="capabilities section" id="capabilities">
         <div className="section-inner">
-          <div className="section-heading center-heading">
+          <div
+            className="section-heading center-heading"
+            data-motion-reveal
+          >
             <span className="eyebrow">为效率而生</span>
             <h2>处理数据，不必处理复杂。</h2>
             <p>所有关键能力都围绕快速、可靠和可维护设计。</p>
           </div>
-          <div className="feature-grid">
+          <div className="feature-grid" data-motion-reveal>
             <article>
               <span className="feature-icon blue-feature">
                 <FileSpreadsheet size={24} />
@@ -364,7 +370,7 @@ export default async function HomePage() {
 
       <section className="api-section section" id="api">
         <div className="section-inner api-inner">
-          <div className="api-copy">
+          <div className="api-copy" data-motion-reveal>
             <span className="eyebrow eyebrow-dark">开放 API</span>
             <h2>一行请求，获取完整用例。</h2>
             <p>
@@ -383,7 +389,7 @@ export default async function HomePage() {
               </span>
             </div>
           </div>
-          <div className="code-window">
+          <div className="code-window" data-motion-reveal>
             <div className="code-topbar">
               <div className="traffic-lights">
                 <i />

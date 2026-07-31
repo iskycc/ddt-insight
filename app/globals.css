@@ -20,6 +20,12 @@
     0 8px 30px rgba(20, 29, 43, 0.05);
   --shadow-lg: 0 34px 90px rgba(30, 45, 70, 0.16),
     0 8px 28px rgba(30, 45, 70, 0.1);
+  --motion-fast: 120ms;
+  --motion-base: 180ms;
+  --motion-slow: 240ms;
+  --motion-ease-standard: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --motion-ease-enter: cubic-bezier(0.16, 1, 0.3, 1);
+  --motion-ease-exit: cubic-bezier(0.4, 0, 1, 1);
 }
 
 * {
@@ -2458,8 +2464,8 @@ body.case-list-resizing .case-workspace {
 }
 
 @keyframes shimmer {
-  to {
-    background-position: -200% 0;
+  50% {
+    opacity: 0.58;
   }
 }
 
@@ -3734,6 +3740,7 @@ body.case-list-resizing .case-workspace {
 
 .import-progress > span::after {
   position: absolute;
+  left: 0;
   width: 42%;
   height: 100%;
   content: "";
@@ -3744,10 +3751,10 @@ body.case-list-resizing .case-workspace {
 
 @keyframes progress {
   from {
-    left: -42%;
+    transform: translateX(-100%);
   }
   to {
-    left: 100%;
+    transform: translateX(340%);
   }
 }
 
@@ -6300,5 +6307,423 @@ body.case-list-resizing .case-workspace {
 
   .profile-stat-grid article {
     min-height: 76px;
+  }
+}
+
+/* Motion system */
+
+@keyframes motion-fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes motion-rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+
+@keyframes motion-slide-in {
+  from {
+    opacity: 0;
+    transform: translateX(-6px);
+  }
+}
+
+@keyframes motion-check-in {
+  from {
+    opacity: 0;
+    transform: scale(0.72);
+  }
+}
+
+@keyframes motion-grow-y {
+  from {
+    opacity: 0.4;
+    transform: scaleY(0);
+  }
+}
+
+@keyframes motion-grow-x {
+  from {
+    opacity: 0.4;
+    transform: scaleX(0);
+  }
+}
+
+@keyframes motion-live-pulse {
+  50% {
+    box-shadow: 0 0 0 5px rgba(35, 174, 112, 0);
+  }
+}
+
+@keyframes motion-float {
+  from {
+    transform: translateY(0);
+  }
+  to {
+    transform: translateY(-5px);
+  }
+}
+
+@keyframes toast-life {
+  0% {
+    opacity: 0;
+    transform: translateY(8px) scale(0.985);
+  }
+  7%,
+  93% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(6px) scale(0.99);
+  }
+}
+
+[data-motion-reveal].motion-pending {
+  opacity: 0;
+  transform: translateY(12px);
+}
+
+[data-motion-reveal].motion-visible {
+  opacity: 1;
+  transform: translateY(0);
+  transition:
+    opacity var(--motion-slow) var(--motion-ease-enter),
+    transform var(--motion-slow) var(--motion-ease-enter);
+}
+
+.site-header-inner {
+  animation: motion-fade-in var(--motion-slow) var(--motion-ease-enter) both;
+}
+
+.hero-badge,
+.hero-copy h1,
+.hero-copy > p,
+.hero-actions,
+.hero-trust,
+.hero-visual {
+  animation: motion-rise-in var(--motion-slow) var(--motion-ease-enter) both;
+}
+
+.hero-copy h1 {
+  animation-delay: 50ms;
+}
+
+.hero-copy > p {
+  animation-delay: 90ms;
+}
+
+.hero-actions {
+  animation-delay: 130ms;
+}
+
+.hero-trust {
+  animation-delay: 170ms;
+}
+
+.hero-visual {
+  animation-delay: 90ms;
+}
+
+.hero-chart-column span,
+.workspace-bars i {
+  transform-origin: bottom;
+  animation: motion-grow-y 520ms var(--motion-ease-enter) both;
+}
+
+.analytics-grid.motion-visible .timeline-item .bar-track > span {
+  transform-origin: bottom;
+  animation: motion-grow-y 520ms var(--motion-ease-enter) both;
+}
+
+.hero-chart-column:nth-child(2) span,
+.timeline-item:nth-child(2) .bar-track > span {
+  animation-delay: 35ms;
+}
+
+.hero-chart-column:nth-child(3) span,
+.timeline-item:nth-child(3) .bar-track > span {
+  animation-delay: 70ms;
+}
+
+.hero-chart-column:nth-child(4) span,
+.timeline-item:nth-child(4) .bar-track > span {
+  animation-delay: 105ms;
+}
+
+.hero-chart-column:nth-child(5) span,
+.timeline-item:nth-child(5) .bar-track > span {
+  animation-delay: 140ms;
+}
+
+.hero-chart-column:nth-child(6) span,
+.timeline-item:nth-child(6) .bar-track > span {
+  animation-delay: 175ms;
+}
+
+.hero-chart-column:nth-child(7) span,
+.timeline-item:nth-child(7) .bar-track > span {
+  animation-delay: 210ms;
+}
+
+.analytics-grid.motion-visible .group-bar > i > span,
+.workspace-group-list p > i em {
+  transform-origin: left;
+  animation: motion-grow-x 460ms var(--motion-ease-enter) both;
+}
+
+.floating-speed {
+  animation: motion-float 2.8s ease-in-out infinite alternate;
+}
+
+.floating-offline {
+  animation: motion-float 3.2s 400ms ease-in-out infinite alternate;
+}
+
+.status-dot,
+.live-pill i,
+.live-label i,
+.case-status i,
+.sidebar-offline-card > i {
+  animation: motion-live-pulse 2s ease-out infinite;
+}
+
+.stats-grid.motion-visible > article,
+.feature-grid.motion-visible > article,
+.recent-imports.motion-visible .recent-list > div,
+.workspace-main > .workspace-page .workspace-stat-grid > article {
+  animation: motion-rise-in var(--motion-slow) var(--motion-ease-enter) backwards;
+}
+
+.stats-grid.motion-visible > article:nth-child(2),
+.feature-grid.motion-visible > article:nth-child(2),
+.recent-imports.motion-visible .recent-list > div:nth-child(2),
+.workspace-main > .workspace-page .workspace-stat-grid > article:nth-child(2) {
+  animation-delay: 45ms;
+}
+
+.stats-grid.motion-visible > article:nth-child(3),
+.feature-grid.motion-visible > article:nth-child(3),
+.recent-imports.motion-visible .recent-list > div:nth-child(3),
+.workspace-main > .workspace-page .workspace-stat-grid > article:nth-child(3) {
+  animation-delay: 90ms;
+}
+
+.stats-grid.motion-visible > article:nth-child(4),
+.recent-imports.motion-visible .recent-list > div:nth-child(4),
+.workspace-main > .workspace-page .workspace-stat-grid > article:nth-child(4) {
+  animation-delay: 135ms;
+}
+
+.workspace-main > .workspace-page,
+.workspace-main > .case-workspace {
+  animation: motion-fade-in var(--motion-base) var(--motion-ease-standard) both;
+}
+
+.workspace-topbar strong {
+  animation: motion-fade-in var(--motion-base) var(--motion-ease-standard) both;
+}
+
+.case-detail-scroll,
+.case-bulk-scroll,
+.detail-loading,
+.empty-detail,
+.profile-identity-body,
+.profile-loading,
+.workspace-panel-empty,
+.table-empty,
+.admin-table-empty,
+.panel-empty {
+  animation: motion-rise-in var(--motion-base) var(--motion-ease-standard) both;
+}
+
+.case-fields {
+  animation: motion-fade-in var(--motion-base) var(--motion-ease-standard) both;
+}
+
+.case-list-row:nth-child(-n + 8),
+.case-list-skeleton:nth-child(-n + 8),
+.admin-table-row:nth-child(-n + 8),
+.imports-table-row:nth-child(-n + 8) {
+  animation: motion-slide-in var(--motion-base) var(--motion-ease-standard) both;
+}
+
+.form-error,
+.admin-alert,
+.import-errors > div,
+.profile-directory-note,
+.case-history-change,
+.audit-detail pre,
+.field-editor,
+.field-value {
+  animation: motion-rise-in var(--motion-base) var(--motion-ease-standard) both;
+}
+
+.admin-modal {
+  animation: modal-in var(--motion-slow) var(--motion-ease-enter) both;
+}
+
+.custom-select-menu > button {
+  transition:
+    color var(--motion-fast) ease,
+    background var(--motion-fast) ease;
+}
+
+.custom-checkbox-box > svg {
+  animation: motion-check-in var(--motion-fast) var(--motion-ease-enter) both;
+}
+
+.journey-step-tabs button span {
+  transition:
+    color var(--motion-base) ease,
+    background var(--motion-base) ease,
+    box-shadow var(--motion-base) ease,
+    transform var(--motion-fast) ease;
+}
+
+.journey-step-tabs button:active span {
+  transform: scale(0.94);
+}
+
+.case-history-expand svg {
+  transition: transform var(--motion-base) var(--motion-ease-standard);
+}
+
+.status-switch {
+  transition:
+    color var(--motion-base) ease,
+    background var(--motion-base) ease,
+    opacity var(--motion-base) ease;
+}
+
+.status-switch i {
+  transition:
+    background var(--motion-base) ease,
+    box-shadow var(--motion-base) ease,
+    transform var(--motion-base) var(--motion-ease-enter);
+}
+
+.status-switch.enabled i {
+  transform: scale(1.06);
+}
+
+.toast {
+  animation: toast-life 3200ms var(--motion-ease-standard) both;
+}
+
+@media (max-width: 820px) {
+  .mobile-nav-backdrop {
+    visibility: hidden;
+    opacity: 0;
+    pointer-events: none;
+    transition:
+      visibility 0s linear var(--motion-base),
+      opacity var(--motion-base) var(--motion-ease-standard);
+  }
+
+  .mobile-nav-backdrop.open {
+    visibility: visible;
+    opacity: 1;
+    pointer-events: auto;
+    transition-delay: 0s;
+  }
+}
+
+.profile-stat-skeleton {
+  display: block;
+  width: 4.5rem;
+  height: 1.25rem;
+  margin-top: 0.25rem;
+  border-radius: 0.375rem;
+  background: linear-gradient(90deg, #edf0f3, #f7f8f9, #edf0f3);
+  animation: shimmer 1.5s ease-in-out infinite;
+}
+
+.profile-stat-grid strong {
+  animation: motion-fade-in var(--motion-base) var(--motion-ease-standard) both;
+}
+
+.profile-identity-body,
+.profile-edit-card .admin-form {
+  transition: opacity var(--motion-base) ease;
+}
+
+.profile-identity-card.is-refreshing .profile-identity-body,
+.profile-edit-card.is-refreshing .admin-form {
+  opacity: 0.62;
+}
+
+.admin-summary-grid strong,
+.admin-table-row,
+.ldap-enable-row,
+.ldap-form,
+.ldap-actions {
+  transition: opacity var(--motion-base) ease;
+}
+
+.admin-summary-grid.is-loading strong {
+  width: 2.25rem;
+  overflow: hidden;
+  border-radius: 0.375rem;
+  color: transparent;
+  background: linear-gradient(90deg, #edf0f3, #f7f8f9, #edf0f3);
+  animation: shimmer 1.5s ease-in-out infinite;
+}
+
+.admin-table.is-refreshing .admin-table-row,
+.ldap-card.is-refreshing .ldap-enable-row,
+.ldap-card.is-refreshing .ldap-form,
+.ldap-card.is-refreshing .ldap-actions {
+  opacity: 0.58;
+}
+
+.ldap-card.is-refreshing .ldap-enable-row,
+.ldap-card.is-refreshing .ldap-form,
+.ldap-card.is-refreshing .ldap-actions {
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-delay: 0ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-delay: 0ms !important;
+    transition-duration: 0.01ms !important;
+  }
+
+  [data-motion-reveal],
+  [data-motion-reveal].motion-pending,
+  [data-motion-reveal].motion-visible {
+    opacity: 1 !important;
+    transform: none !important;
+  }
+
+  .spin,
+  .case-list-skeleton i,
+  .case-list-skeleton span,
+  .profile-stat-skeleton,
+  .admin-summary-grid.is-loading strong,
+  .import-progress > span::after,
+  .status-dot,
+  .live-pill i,
+  .live-label i,
+  .case-status i,
+  .sidebar-offline-card > i,
+  .floating-card,
+  .toast {
+    animation: none !important;
   }
 }

@@ -1,6 +1,13 @@
 "use client";
 
-import { ArrowRight, Eye, EyeOff, LockKeyhole, X } from "lucide-react";
+import {
+  ArrowRight,
+  Eye,
+  EyeOff,
+  LoaderCircle,
+  LockKeyhole,
+  X,
+} from "lucide-react";
 import Link from "next/link";
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -152,7 +159,11 @@ export function LoginDialog({ authenticated }: { authenticated: boolean }) {
                   disabled={submitting}
                 >
                   {submitting ? "正在验证…" : "登录工作台"}
-                  {!submitting && <ArrowRight size={17} />}
+                  {submitting ? (
+                    <LoaderCircle className="spin" size={17} />
+                  ) : (
+                    <ArrowRight size={17} />
+                  )}
                 </button>
               </form>
             </section>

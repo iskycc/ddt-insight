@@ -340,6 +340,7 @@ export function WorkspaceClient({
   useEffect(() => {
     if (!selectedCaseId) return;
     let cancelled = false;
+    setSelectedCase(null);
     setCaseLoading(true);
 
     fetch(`/api/case?caseId=${encodeURIComponent(selectedCaseId)}`, {
@@ -587,12 +588,14 @@ export function WorkspaceClient({
         </div>
       </aside>
 
-      {mobileNavigationOpen && (
-        <div
-          className="mobile-nav-backdrop"
-          onClick={() => setMobileNavigationOpen(false)}
-        />
-      )}
+      <div
+        className={classNames(
+          "mobile-nav-backdrop",
+          mobileNavigationOpen && "open",
+        )}
+        aria-hidden="true"
+        onClick={() => setMobileNavigationOpen(false)}
+      />
 
       <div className="workspace-main">
         <header className="workspace-topbar">
@@ -616,7 +619,7 @@ export function WorkspaceClient({
           <div>
             <span>DDT Insight</span>
             <ChevronRight size={13} />
-            <strong>
+            <strong key={view}>
               {viewLabels[view]}
             </strong>
           </div>
@@ -754,6 +757,7 @@ export function WorkspaceClient({
 
         {view === "caseSearch" && (
           <CaseManagementTools
+            key={view}
             section="search"
             onOpenCase={(caseId) => {
               setSelectedGroup("");
@@ -766,6 +770,7 @@ export function WorkspaceClient({
 
         {view === "caseTemplates" && (
           <CaseManagementTools
+            key={view}
             section="templates"
             initialSrNum={selectedGroup}
           />
@@ -829,7 +834,7 @@ export function WorkspaceClient({
       )}
 
       {toast && (
-        <div className="toast" role="status">
+        <div className="toast" key={toast} role="status">
           <Check size={16} />
           {toast}
         </div>
@@ -1527,7 +1532,7 @@ function CaseManager({
               </div>
             </div>
 
-            <div className="case-detail-scroll">
+            <div className="case-detail-scroll" key={selectedCaseId}>
               <div className="case-title-block">
                 <div>
                   <span className="case-title-icon">
@@ -1634,6 +1639,7 @@ function CaseManager({
                   "case-fields",
                   caseLoading && "case-fields-loading",
                 )}
+                key={`${selectedCaseId}:${resolvedJourneyStep}`}
               >
                 {Object.entries(visibleCaseData ?? {}).map(([column, value]) => (
                   <EditableField

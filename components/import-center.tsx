@@ -748,7 +748,12 @@ export function ImportSourceTracker() {
       </div>
 
       {error && <div className={styles.errors}>{error}</div>}
-      <div className={styles.sourceList}>
+      <div
+        className={`${styles.sourceList} ${
+          loading && items.length ? styles.refreshing : ""
+        }`}
+        aria-busy={loading}
+      >
         {items.map((item) => (
           <article className={styles.sourceCard} key={item.id}>
             <div className={styles.sourceMeta}>

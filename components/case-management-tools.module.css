@@ -258,6 +258,7 @@
   padding: 10px 12px;
   font-size: 0.5rem;
   line-height: 1.5;
+  animation: tools-feedback-in 180ms ease-out both;
 }
 
 .notice {
@@ -278,6 +279,14 @@
   gap: 10px;
 }
 
+.results {
+  transition: opacity 180ms ease;
+}
+
+.results.refreshing {
+  opacity: 0.58;
+}
+
 .filterRow {
   display: grid;
   grid-template-columns: minmax(110px, 0.8fr) 130px minmax(120px, 1fr) 36px;
@@ -294,10 +303,21 @@
   text-align: left;
   color: inherit;
   background: rgba(244, 247, 251, 0.9);
+  animation: tools-item-in 180ms ease-out backwards;
+  transition:
+    transform 160ms ease,
+    background 160ms ease,
+    box-shadow 160ms ease;
 }
 
 .result:hover {
   background: #edf4fc;
+  box-shadow: 0 6px 16px rgba(30, 68, 112, 0.07);
+  transform: translateY(-1px);
+}
+
+.result:active {
+  transform: translateY(0) scale(0.995);
 }
 
 .result strong {
@@ -321,6 +341,7 @@
   padding: 12px 14px;
   border-radius: 10px;
   background: #f3f6fa;
+  animation: tools-item-in 180ms ease-out both;
 }
 
 .templateItem strong,
@@ -345,6 +366,7 @@
   border: 1px solid rgba(30, 48, 77, 0.09);
   border-radius: 10px;
   background: rgba(248, 250, 253, 0.92);
+  animation: tools-item-in 180ms ease-out both;
 }
 
 .ruleHeader {
@@ -365,6 +387,7 @@
   padding: 20px;
   background: rgba(12, 21, 35, 0.42);
   backdrop-filter: blur(10px);
+  animation: tools-backdrop-in 160ms ease-out both;
 }
 
 .modal {
@@ -374,6 +397,7 @@
   border-radius: 16px;
   background: rgba(255, 255, 255, 0.98);
   box-shadow: 0 30px 80px rgba(19, 31, 51, 0.28);
+  animation: tools-modal-in 200ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
 }
 
 .modal h3 {
@@ -401,6 +425,7 @@
   border: 1px solid rgba(30, 48, 77, 0.1);
   border-radius: 9px;
   background: #f7f9fc;
+  animation: tools-item-in 180ms ease-out both;
 }
 
 .reviewSummary > div:nth-child(n + 3) {
@@ -431,6 +456,34 @@
   color: #7a879a;
   font-size: 0.5rem;
   text-align: center;
+  animation: tools-feedback-in 180ms ease-out both;
+}
+
+@keyframes tools-backdrop-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes tools-modal-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.985);
+  }
+}
+
+@keyframes tools-item-in {
+  from {
+    opacity: 0;
+    transform: translateY(5px);
+  }
+}
+
+@keyframes tools-feedback-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
 }
 
 @media (max-width: 720px) {

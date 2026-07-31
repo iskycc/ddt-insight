@@ -39,6 +39,29 @@ function formattedCount(value: number | undefined) {
   return countFormatter.format(value ?? 0);
 }
 
+function ProfileStatValue({
+  loading,
+  value,
+}: {
+  loading: boolean;
+  value: number | undefined;
+}) {
+  if (loading && value === undefined) {
+    return (
+      <span
+        className="profile-stat-skeleton"
+        aria-label="正在读取统计数据"
+      />
+    );
+  }
+
+  return (
+    <strong key={value} title={formattedCount(value)}>
+      {formattedCount(value)}
+    </strong>
+  );
+}
+
 async function responseError(response: Response, fallback: string) {
   try {
     const body = (await response.json()) as { error?: string };
@@ -173,9 +196,10 @@ export function ProfileSettings({
           </span>
           <div>
             <small>平台累计 API 调用</small>
-            <strong title={formattedCount(stats?.platformTotal)}>
-              {formattedCount(stats?.platformTotal)}
-            </strong>
+            <ProfileStatValue
+              loading={loading}
+              value={stats?.platformTotal}
+            />
           </div>
         </article>
         <article>
@@ -184,9 +208,10 @@ export function ProfileSettings({
           </span>
           <div>
             <small>今日 API 调用</small>
-            <strong title={formattedCount(stats?.platformToday)}>
-              {formattedCount(stats?.platformToday)}
-            </strong>
+            <ProfileStatValue
+              loading={loading}
+              value={stats?.platformToday}
+            />
           </div>
         </article>
         <article>
@@ -195,9 +220,7 @@ export function ProfileSettings({
           </span>
           <div>
             <small>开放 API 调用</small>
-            <strong title={formattedCount(stats?.openTotal)}>
-              {formattedCount(stats?.openTotal)}
-            </strong>
+            <ProfileStatValue loading={loading} value={stats?.openTotal} />
           </div>
         </article>
         <article>
@@ -206,25 +229,35 @@ export function ProfileSettings({
           </span>
           <div>
             <small>我的认证 API 调用</small>
-            <strong title={formattedCount(stats?.currentUserTotal)}>
-              {formattedCount(stats?.currentUserTotal)}
-            </strong>
+            <ProfileStatValue
+              loading={loading}
+              value={stats?.currentUserTotal}
+            />
           </div>
         </article>
       </div>
 
       <div className="profile-content-grid">
-        <article className="admin-card profile-identity-card">
+        <article
+          className={`admin-card profile-identity-card${
+            loading && profile ? " is-refreshing" : ""
+          }`}
+          aria-busy={loading}
+        >
           <div className="admin-card-heading">
             <div>
               <h2>账户概览</h2>
               <p>角色和登录来源由系统管理员维护。</p>
             </div>
           </div>
-          {loading || !profile ? (
+          {!profile ? (
             <div className="profile-loading">
-              <LoaderCircle className="spin" size={20} />
-              正在读取个人资料…
+              {loading ? (
+                <LoaderCircle className="spin" size={20} />
+              ) : (
+                <X size={20} />
+              )}
+              {loading ? "正在读取个人资料…" : "个人资料暂不可用"}
             </div>
           ) : (
             <div className="profile-identity-body">
@@ -284,7 +317,12 @@ export function ProfileSettings({
           )}
         </article>
 
-        <article className="admin-card profile-edit-card">
+        <article
+          className={`admin-card profile-edit-card${
+            loading && profile ? " is-refreshing" : ""
+          }`}
+          aria-busy={loading}
+        >
           <div className="admin-card-heading">
             <div>
               <h2>基本信息</h2>

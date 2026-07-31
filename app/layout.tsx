@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import "@/app/globals.css";
+import { MotionObserver } from "@/components/motion-observer";
 
 export const metadata: Metadata = {
   title: {
@@ -22,8 +23,11 @@ export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="zh-CN">
-      <body>{children}</body>
+    <html lang="zh-CN" data-scroll-behavior="smooth">
+      <body>
+        <MotionObserver />
+        {children}
+      </body>
     </html>
   );
 }

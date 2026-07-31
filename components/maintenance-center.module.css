@@ -47,6 +47,7 @@
   background: #fff5f4;
   color: #b23f3a;
   font-size: 0.5rem;
+  animation: maintenance-feedback-in 180ms ease-out both;
 }
 
 .alert span,
@@ -64,6 +65,17 @@
   background: transparent;
   color: inherit;
   cursor: pointer;
+  transition:
+    transform 160ms ease,
+    background 160ms ease;
+}
+
+.alert button:hover {
+  background: rgba(178, 63, 58, 0.08);
+}
+
+.alert button:active {
+  transform: scale(0.94);
 }
 
 .pending {
@@ -220,6 +232,19 @@
   font: inherit;
   font-size: 0.5625rem;
   cursor: pointer;
+  transition:
+    transform 160ms ease,
+    border-color 160ms ease,
+    background 160ms ease;
+}
+
+.filePicker:hover {
+  border-color: rgba(70, 99, 158, 0.5);
+  background: #f0f5ff;
+}
+
+.filePicker:active {
+  transform: scale(0.995);
 }
 
 .filePicker span {
@@ -241,6 +266,12 @@
   display: grid;
   margin-top: 18px;
   border-top: 1px solid var(--maintenance-border);
+  transition: opacity 180ms ease;
+}
+
+.refreshing .list,
+.refreshing .recycleList {
+  opacity: 0.58;
 }
 
 .backupItem,
@@ -251,6 +282,7 @@
   min-width: 0;
   padding: 14px 2px;
   border-bottom: 1px solid rgba(76, 92, 121, 0.1);
+  animation: maintenance-item-in 180ms ease-out both;
 }
 
 .backupItem {
@@ -312,11 +344,20 @@
   background: transparent;
   color: #9b6570;
   cursor: pointer;
+  transition:
+    transform 160ms ease,
+    color 160ms ease,
+    background 160ms ease;
 }
 
 .iconButton:hover {
   background: #fff0f1;
   color: #c0424d;
+  transform: translateY(-1px);
+}
+
+.iconButton:active {
+  transform: translateY(0) scale(0.94);
 }
 
 .empty {
@@ -327,6 +368,7 @@
   gap: 9px;
   color: #7d8799;
   font-size: 0.5rem;
+  animation: maintenance-feedback-in 180ms ease-out both;
 }
 
 .metricGrid {
@@ -345,6 +387,7 @@
   border-radius: 13px;
   background: rgba(255, 255, 255, 0.88);
   box-shadow: 0 4px 14px rgba(25, 36, 52, 0.025);
+  animation: maintenance-item-in 180ms ease-out both;
 }
 
 .metricGrid p,
@@ -440,6 +483,8 @@
   height: 100%;
   border-radius: inherit;
   background: linear-gradient(90deg, #7191e9, #8e79de);
+  transform-origin: left center;
+  animation: maintenance-bar-in 220ms ease-out both;
 }
 
 .recycleHeading {
@@ -480,6 +525,14 @@
   font-size: 0.5rem;
   font-weight: 700;
   cursor: pointer;
+  transition:
+    color 160ms ease,
+    background 160ms ease;
+}
+
+.search button:hover {
+  color: #334b78;
+  background: rgba(73, 102, 159, 0.06);
 }
 
 .recycleList article {
@@ -513,6 +566,7 @@
   place-items: center;
   background: rgba(18, 25, 40, 0.35);
   backdrop-filter: blur(10px);
+  animation: maintenance-backdrop-in 160ms ease-out both;
 }
 
 .confirm {
@@ -522,6 +576,7 @@
   border-radius: 18px;
   background: rgba(255, 255, 255, 0.97);
   box-shadow: 0 30px 80px rgba(19, 29, 48, 0.22);
+  animation: maintenance-modal-in 200ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
 }
 
 .confirm h2 {
@@ -548,6 +603,39 @@
   color: #fff !important;
   background: #c94c57 !important;
   box-shadow: 0 8px 20px rgba(181, 54, 66, 0.2);
+}
+
+@keyframes maintenance-backdrop-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes maintenance-modal-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.985);
+  }
+}
+
+@keyframes maintenance-item-in {
+  from {
+    opacity: 0;
+    transform: translateY(5px);
+  }
+}
+
+@keyframes maintenance-feedback-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}
+
+@keyframes maintenance-bar-in {
+  from {
+    transform: scaleX(0);
+  }
 }
 
 @media (max-width: 1020px) {

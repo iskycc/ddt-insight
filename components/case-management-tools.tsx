@@ -343,7 +343,7 @@ export function BulkCaseActions({
           onClick={exportCases}
         >
           {busy === "export" ? (
-            <LoaderCircle size={16} />
+            <LoaderCircle className="spin" size={16} />
           ) : (
             <Download size={16} />
           )}
@@ -424,7 +424,7 @@ export function BulkCaseActions({
                 onClick={() => void updateCases()}
               >
                 {busy === "update" ? (
-                  <LoaderCircle size={16} />
+                  <LoaderCircle className="spin" size={16} />
                 ) : (
                   <Save size={16} />
                 )}
@@ -463,7 +463,9 @@ export function BulkCaseActions({
                 disabled={Boolean(busy)}
                 onClick={deleteCases}
               >
-                {busy === "delete" && <LoaderCircle size={16} />}
+                {busy === "delete" && (
+                  <LoaderCircle className="spin" size={16} />
+                )}
                 确认移入回收站
               </button>
             </div>
@@ -674,12 +676,21 @@ export function AdvancedCaseSearch({
           disabled={loading}
           onClick={() => void runSearch(false)}
         >
-          {loading ? <LoaderCircle size={16} /> : <Search size={16} />}
+          {loading ? (
+            <LoaderCircle className="spin" size={16} />
+          ) : (
+            <Search size={16} />
+          )}
           搜索
         </button>
       </div>
       {error && <p className={styles.error}>{error}</p>}
-      <div className={styles.results}>
+      <div
+        className={`${styles.results} ${
+          loading && items.length ? styles.refreshing : ""
+        }`}
+        aria-busy={loading}
+      >
         {items.map((item) => (
           <button
             className={styles.result}
@@ -908,7 +919,7 @@ export function CaseTemplateManager({
 
         <div className={styles.rules}>
           {rules.map((rule, index) => (
-            <div className={styles.rule} key={`${index}-${rule.field}`}>
+            <div className={styles.rule} key={`rule-${index}`}>
               <div className={styles.ruleHeader}>
                 <strong>字段规则 {index + 1}</strong>
                 <button
@@ -1017,7 +1028,11 @@ export function CaseTemplateManager({
             disabled={busy || !srNum.trim() || !name.trim()}
             onClick={() => void save()}
           >
-            {busy ? <LoaderCircle size={16} /> : <Save size={16} />}
+            {busy ? (
+              <LoaderCircle className="spin" size={16} />
+            ) : (
+              <Save size={16} />
+            )}
             保存模板
           </button>
         </div>
