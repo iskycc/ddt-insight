@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { restoreCaseHistoryVersion } from "@/lib/case-history";
-import { errorResponse, requireApiSession } from "@/lib/http";
+import { errorResponse, requireEditorSession } from "@/lib/http";
 import { invalidateCaseCache } from "@/lib/repository";
 
 export const dynamic = "force-dynamic";
@@ -11,8 +11,8 @@ export async function POST(
     params: Promise<{ caseId: string; historyId: string }>;
   },
 ) {
-  const session = await requireApiSession();
-  if (!session) return errorResponse("请先登录", 401);
+  const session = await requireEditorSession();
+  if (session instanceof NextResponse) return session;
 
   const { caseId, historyId: rawHistoryId } = await context.params;
   const historyId = Number(rawHistoryId);

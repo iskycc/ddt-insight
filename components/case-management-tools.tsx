@@ -727,6 +727,7 @@ export function AdvancedCaseSearch({
 export interface CaseTemplateManagerProps {
   initialSrNum?: string;
   onTemplatesChanged?: () => void | Promise<void>;
+  readOnly?: boolean;
 }
 
 function blankRule(): TemplateRule {
@@ -736,6 +737,7 @@ function blankRule(): TemplateRule {
 export function CaseTemplateManager({
   initialSrNum = "",
   onTemplatesChanged,
+  readOnly = false,
 }: CaseTemplateManagerProps) {
   const [templates, setTemplates] = useState<TemplateItem[]>([]);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -791,6 +793,7 @@ export function CaseTemplateManager({
   }
 
   async function save() {
+    if (readOnly) return;
     setBusy(true);
     setError("");
     setMessage("");
@@ -816,6 +819,7 @@ export function CaseTemplateManager({
   }
 
   async function remove(template: TemplateItem) {
+    if (readOnly) return;
     setBusy(true);
     setError("");
     try {
@@ -857,13 +861,13 @@ export function CaseTemplateManager({
                 type="button"
                 onClick={() => edit(template)}
               >
-                编辑
+                {readOnly ? "查看" : "编辑"}
               </button>
               <button
                 className={styles.iconButton}
                 type="button"
                 aria-label={`删除模板 ${template.name}`}
-                disabled={busy}
+                disabled={readOnly || busy}
                 onClick={() => void remove(template)}
               >
                 <Trash2 size={15} />
@@ -875,7 +879,9 @@ export function CaseTemplateManager({
 
       <div className={styles.card}>
         <div className={styles.ruleHeader}>
-          <h4>{editingId ? "编辑模板" : "新建模板"}</h4>
+          <h4>
+            {editingId ? (readOnly ? "查看模板" : "编辑模板") : "新建模板"}
+          </h4>
           {editingId && (
             <button
               className={styles.iconButton}
@@ -887,6 +893,17 @@ export function CaseTemplateManager({
             </button>
           )}
         </div>
+        <fieldset
+          disabled={readOnly}
+          style={{
+            border: 0,
+            display: "grid",
+            gap: 12,
+            margin: 0,
+            minWidth: 0,
+            padding: 0,
+          }}
+        >
         <div className={styles.grid}>
           <label className={styles.field}>
             <span>匹配 srNum</span>
@@ -1036,6 +1053,7 @@ export function CaseTemplateManager({
             保存模板
           </button>
         </div>
+        </fieldset>
       </div>
       {message && <p className={styles.notice}>{message}</p>}
       {error && <p className={styles.error}>{error}</p>}
@@ -1053,6 +1071,7 @@ export function CaseManagementTools({
   onOpenCase,
   initialSrNum,
   onTemplatesChanged,
+  readOnly,
   section,
 }: CaseManagementToolsProps) {
   return (
@@ -1062,6 +1081,7 @@ export function CaseManagementTools({
         <CaseTemplateManager
           initialSrNum={initialSrNum}
           onTemplatesChanged={onTemplatesChanged}
+          readOnly={readOnly}
         />
       )}
     </div>

@@ -4,7 +4,7 @@ import {
   createCaseTemplate,
   listCaseTemplates,
 } from "@/lib/case-management";
-import { errorResponse, requireApiSession } from "@/lib/http";
+import { errorResponse, requireApiSession, requireEditorSession } from "@/lib/http";
 
 export const dynamic = "force-dynamic";
 
@@ -16,8 +16,8 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
-  const session = await requireApiSession();
-  if (!session) return errorResponse("请先登录", 401);
+  const session = await requireEditorSession();
+  if (session instanceof NextResponse) return session;
   let body: {
     srNum?: string;
     name?: string;

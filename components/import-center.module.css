@@ -370,6 +370,11 @@
   box-shadow: 0 0 0 4px rgba(46, 158, 104, 0.13);
 }
 
+.statusDot.partial {
+  background: #d7911e;
+  box-shadow: 0 0 0 4px rgba(215, 145, 30, 0.13);
+}
+
 .statusDot.failed,
 .statusDot.cancelled {
   background: #d64b54;
@@ -487,6 +492,51 @@
   font-size: 0.625rem;
 }
 
+.partialNotice {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-top: 15px;
+  padding: 12px 13px;
+  color: #865b16;
+  border: 1px solid #edd9ae;
+  border-radius: 13px;
+  background: #fffaf0;
+  animation: import-feedback-in 180ms ease-out both;
+}
+
+.partialNoticeIcon {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: 9px;
+  color: #b8750a;
+  background: #fff0ce;
+}
+
+.partialNotice > div {
+  min-width: 0;
+}
+
+.partialNotice strong,
+.partialNotice span {
+  display: block;
+}
+
+.partialNotice strong {
+  color: #725018;
+  font-size: 0.6875rem;
+}
+
+.partialNotice > div > span {
+  margin-top: 4px;
+  color: #9a7639;
+  font-size: 0.5625rem;
+  line-height: 1.55;
+}
+
 .progressBlock {
   margin-top: 15px;
   padding: 13px;
@@ -544,6 +594,16 @@
   background: #fff0f1;
 }
 
+.noImportableFiles {
+  display: grid;
+  min-height: 68px;
+  place-items: center;
+  padding: 12px;
+  color: #a46a6e;
+  background: #fffafa;
+  font-size: 0.625rem;
+}
+
 .resultBanner,
 .errors {
   margin-top: 14px;
@@ -559,6 +619,12 @@
   padding: 11px 12px;
   color: #217a50;
   background: #eaf8f1;
+}
+
+.resultBanner.partialResult {
+  color: #8a601b;
+  border: 1px solid #f0ddb8;
+  background: #fff9ed;
 }
 
 .errors {
@@ -783,26 +849,105 @@
   font-size: 0.4375rem;
 }
 
+.sourceStats .failedStat {
+  color: #a33d43;
+  background: #ffebec;
+}
+
 .sourceFiles {
-  display: flex;
-  min-width: 0;
-  flex-wrap: wrap;
+  display: grid;
   gap: 7px;
   margin-left: 17px;
 }
 
-.sourceFiles span {
-  display: inline-flex;
-  max-width: 100%;
+.sourceFile {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
-  gap: 5px;
-  color: #64707b;
-  font-size: 0.4375rem;
+  gap: 8px;
+  padding: 8px 9px;
+  border: 1px solid #e5e9ed;
+  border-radius: 9px;
+  background: #fff;
+}
+
+.sourceFileIcon {
+  display: grid;
+  width: 26px;
+  height: 26px;
+  place-items: center;
+  border-radius: 8px;
+  color: #71808e;
+  background: #eef2f5;
+}
+
+.sourceFile > div {
+  min-width: 0;
+}
+
+.sourceFile strong,
+.sourceFile small {
+  display: block;
   overflow-wrap: anywhere;
 }
 
-.sourceFiles span svg {
-  flex-shrink: 0;
+.sourceFile strong {
+  color: #4d5660;
+  font-size: 0.5rem;
+  font-weight: 630;
+}
+
+.sourceFile small {
+  margin-top: 3px;
+  color: #8a929b;
+  font-size: 0.4375rem;
+  line-height: 1.45;
+}
+
+.sourceFile > em {
+  padding: 3px 6px;
+  border-radius: 6px;
+  color: #6f7881;
+  background: #eef1f4;
+  font-size: 0.4375rem;
+  font-style: normal;
+  white-space: nowrap;
+}
+
+.sourceFileSuccess .sourceFileIcon {
+  color: #238b5b;
+  background: #e8f7ef;
+}
+
+.sourceFileSuccess > em {
+  color: #23784f;
+  background: #e8f7ef;
+}
+
+.sourceFileError {
+  border-color: #f2d8d9;
+  background: #fffafa;
+}
+
+.sourceFileError .sourceFileIcon {
+  color: #c7434b;
+  background: #ffebec;
+}
+
+.sourceFileError strong,
+.sourceFileError small {
+  color: #97444a;
+}
+
+.sourceFileError > em {
+  color: #a43d44;
+  background: #ffebec;
+}
+
+.sourceFilePending .sourceFileIcon {
+  color: #8a651f;
+  background: #fff3d7;
 }
 
 .sourceErrors {
@@ -893,5 +1038,20 @@
 
   .filters {
     grid-template-columns: 1fr;
+  }
+
+  .sourceFiles,
+  .sourceErrors,
+  .sourceStats {
+    margin-left: 0;
+  }
+
+  .sourceFile {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .sourceFile > em {
+    grid-column: 2;
+    justify-self: start;
   }
 }

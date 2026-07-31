@@ -1,14 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auditRequest } from "@/lib/audit";
 import { normalizeBulkCaseIds } from "@/lib/case-management";
-import { errorResponse, requireApiSession } from "@/lib/http";
+import { errorResponse, requireEditorSession } from "@/lib/http";
 import { trashCases } from "@/lib/repository";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(request: NextRequest) {
-  const session = await requireApiSession();
-  if (!session) return errorResponse("请先登录", 401);
+  const session = await requireEditorSession();
+  if (session instanceof NextResponse) return session;
 
   let body: { caseIds?: unknown };
   try {

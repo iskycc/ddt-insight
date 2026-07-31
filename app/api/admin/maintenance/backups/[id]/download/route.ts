@@ -1,8 +1,8 @@
 import { createReadStream } from "node:fs";
 import { Readable } from "node:stream";
-import { NextRequest } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { auditRequest } from "@/lib/audit";
-import { errorResponse, requireApiSession } from "@/lib/http";
+import { errorResponse, requireAuthenticatedSession } from "@/lib/http";
 import { getMaintenanceBackup } from "@/lib/maintenance";
 
 export const dynamic = "force-dynamic";
@@ -11,9 +11,8 @@ export async function GET(
   request: NextRequest,
   context: { params: Promise<{ id: string }> },
 ) {
-  const session = await requireApiSession();
-  if (!session) return errorResponse("请先登录", 401);
-  if (session.role !== "admin") return errorResponse("需要管理员权限", 403);
+  const session = await requireAuthenticatedSession();
+  if (session instanceof NextResponse) return session;
 
   const { id } = await context.params;
   try {

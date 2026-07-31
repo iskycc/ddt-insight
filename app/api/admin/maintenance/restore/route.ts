@@ -5,7 +5,7 @@ import { pipeline } from "node:stream/promises";
 import { NextRequest, NextResponse } from "next/server";
 import { auditRequest } from "@/lib/audit";
 import { dataDirectory } from "@/lib/db";
-import { errorResponse, requireApiSession } from "@/lib/http";
+import { errorResponse, requireAdminSession } from "@/lib/http";
 import {
   cancelPendingRestore,
   stageMaintenanceRestore,
@@ -37,9 +37,8 @@ async function* requestChunks(
 }
 
 export async function POST(request: NextRequest) {
-  const session = await requireApiSession();
-  if (!session) return errorResponse("请先登录", 401);
-  if (session.role !== "admin") return errorResponse("需要管理员权限", 403);
+  const session = await requireAdminSession();
+  if (session instanceof NextResponse) return session;
 
   const configuredLimitMb = Number(
     process.env.MAX_BACKUP_RESTORE_MB ?? 4_096,
@@ -121,9 +120,8 @@ export async function POST(request: NextRequest) {
 }
 
 export async function DELETE(request: NextRequest) {
-  const session = await requireApiSession();
-  if (!session) return errorResponse("请先登录", 401);
-  if (session.role !== "admin") return errorResponse("需要管理员权限", 403);
+  const session = await requireAdminSession();
+  if (session instanceof NextResponse) return session;
 
   const cancelled = cancelPendingRestore();
   if (!cancelled) return errorResponse("没有等待生效的恢复任务", 404);

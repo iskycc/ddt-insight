@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { recordApiCall, getApiCallStatistics } from "@/lib/api-stats";
 import { auditRequest } from "@/lib/audit";
-import { errorResponse } from "@/lib/http";
+import { errorResponse, requireEditorSession } from "@/lib/http";
 import { findUserById, updateOwnProfile } from "@/lib/users";
 
 export async function GET() {
@@ -26,12 +26,8 @@ export async function GET() {
 }
 
 export async function PATCH(request: NextRequest) {
-  const session = await getSession();
-  recordApiCall(
-    session ? "authenticated" : "anonymous",
-    session?.userId,
-  );
-  if (!session) return errorResponse("请先登录", 401);
+  const session = await requireEditorSession();
+  if (session instanceof NextResponse) return session;
 
   const failure = (message: string) => {
     auditRequest(request, session, {

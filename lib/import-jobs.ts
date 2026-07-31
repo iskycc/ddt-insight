@@ -53,6 +53,14 @@ export interface ImportFileError {
   error: string;
 }
 
+export interface ImmediateImportFile {
+  fileName: string;
+  sizeBytes: number;
+  totalRows: number;
+  result?: ImportResult;
+  error?: string;
+}
+
 interface PreviewFile {
   id: string;
   fileName: string;
@@ -664,6 +672,106 @@ export async function createImportPreview(input: {
   }
 }
 
+/**
+ * The compatibility import endpoint writes spreadsheets immediately instead
+ * of using the preview worker. Persist the same terminal source information so
+ * every supported import path remains visible in the import-source timeline.
+ */
+export function recordImmediateImportSource(input: {
+  files: ImmediateImportFile[];
+  actor: Pick<
+    AuthSession,
+    "userId" | "username" | "displayName" | "provider"
+  >;
+  requestIp?: string;
+  requestUserAgent?: string;
+}) {
+  ensureImportTables();
+  const id = randomUUID();
+  const now = new Date().toISOString();
+  const errors = input.files.flatMap((file) =>
+    file.result
+      ? []
+      : [{ fileName: file.fileName, error: file.error || "导入失败" }],
+  );
+  const totalRows = input.files.reduce(
+    (total, file) => total + Math.max(0, file.totalRows),
+    0,
+  );
+  const insertedRows = input.files.reduce(
+    (total, file) => total + (file.result?.inserted ?? 0),
+    0,
+  );
+  const updatedRows = input.files.reduce(
+    (total, file) => total + (file.result?.updated ?? 0),
+    0,
+  );
+  const successfulFiles = input.files.length - errors.length;
+  const status: ImportJobStatus = successfulFiles ? "completed" : "failed";
+
+  db.transaction(() => {
+    db.prepare(`
+      INSERT INTO import_jobs (
+        id, status, strategy, actor_user_id, actor_username,
+        actor_display_name, actor_provider, total_files, total_rows,
+        processed_files, processed_rows, inserted_rows, updated_rows,
+        failed_files, errors_json, request_ip, request_user_agent,
+        created_at, started_at, completed_at
+      ) VALUES (
+        ?, ?, 'overwrite', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+      )
+    `).run(
+      id,
+      status,
+      input.actor.userId,
+      input.actor.username,
+      input.actor.displayName,
+      input.actor.provider,
+      input.files.length,
+      totalRows,
+      input.files.length,
+      totalRows,
+      insertedRows,
+      updatedRows,
+      errors.length,
+      JSON.stringify(errors),
+      (input.requestIp ?? "").slice(0, 128),
+      (input.requestUserAgent ?? "").slice(0, 512),
+      now,
+      now,
+      now,
+    );
+
+    const insertFile = db.prepare(`
+      INSERT INTO import_job_files (
+        id, job_id, ordinal, file_name, size_bytes, status, total_rows,
+        new_rows, changed_rows, imported_rows, inserted_rows, updated_rows,
+        error
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+    input.files.forEach((file, ordinal) => {
+      const result = file.result;
+      insertFile.run(
+        randomUUID(),
+        id,
+        ordinal,
+        file.fileName,
+        Math.max(0, file.sizeBytes),
+        result ? "completed" : "failed",
+        Math.max(0, file.totalRows),
+        result?.inserted ?? 0,
+        result?.updated ?? 0,
+        result?.imported ?? 0,
+        result?.inserted ?? 0,
+        result?.updated ?? 0,
+        result ? "" : file.error || "导入失败",
+      );
+    });
+  })();
+
+  return toJobView(getStoredJob(id)!);
+}
+
 export function getImportJob(
   jobId: string,
   session: Pick<AuthSession, "userId" | "role">,
@@ -748,6 +856,45 @@ function appendJobError(jobId: string, error: ImportFileError) {
   );
 }
 
+function markImportFileFailed(
+  jobId: string,
+  file: Pick<PreviewFile, "id" | "fileName" | "totalRows">,
+  error: string,
+) {
+  return db.transaction(() => {
+    const update = db.prepare(`
+      UPDATE import_job_files
+      SET status = 'failed', error = ?
+      WHERE id = ? AND job_id = ?
+        AND status IN ('ready', 'importing')
+    `).run(error, file.id, jobId);
+    if (!update.changes) return false;
+
+    const job = getStoredJob(jobId);
+    if (!job) return false;
+    const errors = parseErrors(job.errorsJson);
+    errors.push({ fileName: file.fileName, error });
+    db.prepare(`
+      UPDATE import_jobs
+      SET processed_files = processed_files + 1,
+          processed_rows = processed_rows + ?,
+          failed_files = failed_files + 1,
+          errors_json = ?
+      WHERE id = ?
+    `).run(file.totalRows, JSON.stringify(errors), jobId);
+    return true;
+  })();
+}
+
+function markUnprocessedFilesCancelled(jobId: string, error = "") {
+  db.prepare(`
+    UPDATE import_job_files
+    SET status = 'cancelled',
+        error = CASE WHEN ? = '' THEN error ELSE ? END
+    WHERE job_id = ? AND status IN ('ready', 'importing')
+  `).run(error, error, jobId);
+}
+
 function claimNextJob() {
   ensureImportTables();
   return db.transaction(() => {
@@ -818,33 +965,52 @@ function markJobTerminal(
 async function processClaimedJob(jobId: string) {
   const initial = getStoredJob(jobId);
   if (!initial) return;
-  const files = listJobFiles(jobId).filter((file) => file.storedName);
+  const files = listJobFiles(jobId).filter(
+    (file) =>
+      file.storedName && ["ready", "importing"].includes(file.status),
+  );
 
   try {
+    let filesToImport = files;
     let preparedForError:
-      | Array<{
-          file: PreviewFile;
-          parsed: ParsedSpreadsheet;
-          classification: ReturnType<typeof classifyRows>;
-        }>
+      | Map<
+          string,
+          {
+            parsed: ParsedSpreadsheet;
+            classification: ReturnType<typeof classifyRows>;
+          }
+        >
       | undefined;
 
     if (initial.strategy === "error") {
-      const parsed = await Promise.all(
-        files.map(async (file) => ({
-          file,
-          parsed: await loadParsedFile(jobId, file),
-        })),
-      );
+      const parsed: Array<{
+        file: PreviewFile;
+        parsed: ParsedSpreadsheet;
+      }> = [];
+      for (const file of files) {
+        try {
+          parsed.push({
+            file,
+            parsed: await loadParsedFile(jobId, file),
+          });
+        } catch (error) {
+          markImportFileFailed(
+            jobId,
+            file,
+            error instanceof Error ? error.message : "执行前校验失败",
+          );
+        }
+      }
+
       const allCaseIds = parsed.flatMap(({ parsed: spreadsheet }) =>
         spreadsheet.rows.map((row) => String(row.CaseID)),
       );
       const virtual = loadExistingCases(allCaseIds);
-      preparedForError = parsed.map((item) => ({
+      const prepared = parsed.map((item) => ({
         ...item,
         classification: classifyRows(item.parsed.rows, virtual, true),
       }));
-      const conflicts = preparedForError.flatMap((item) =>
+      const conflicts = prepared.flatMap((item) =>
         item.classification.changed.map((row) => String(row.CaseID)),
       );
       if (conflicts.length) {
@@ -854,32 +1020,38 @@ async function processClaimedJob(jobId: string) {
             .join("、")}），未写入任何用例`,
         );
       }
+
+      filesToImport = prepared.map((item) => item.file);
+      preparedForError = new Map(
+        prepared.map((item) => [
+          item.file.id,
+          {
+            parsed: item.parsed,
+            classification: item.classification,
+          },
+        ]),
+      );
     }
 
-    for (let index = 0; index < files.length; index += 1) {
+    for (const file of filesToImport) {
       const latest = getStoredJob(jobId);
       if (!latest) return;
       if (latest.cancelRequested) {
-        db.prepare(`
-          UPDATE import_job_files
-          SET status = 'cancelled'
-          WHERE job_id = ? AND status = 'ready'
-        `).run(jobId);
+        markUnprocessedFilesCancelled(jobId);
         markJobTerminal(latest, "cancelled");
         return;
       }
 
-      const file = files[index]!;
       db.prepare(`
         UPDATE import_job_files SET status = 'importing' WHERE id = ?
       `).run(file.id);
 
       try {
+        const prepared = preparedForError?.get(file.id);
         const parsed =
-          preparedForError?.[index]?.parsed ??
-          (await loadParsedFile(jobId, file));
+          prepared?.parsed ?? (await loadParsedFile(jobId, file));
         const classification =
-          preparedForError?.[index]?.classification ??
+          prepared?.classification ??
           classifyRows(
             parsed.rows,
             loadExistingCases(parsed.rows.map((row) => String(row.CaseID))),
@@ -942,17 +1114,7 @@ async function processClaimedJob(jobId: string) {
         })();
       } catch (error) {
         const message = error instanceof Error ? error.message : "导入失败";
-        db.prepare(`
-          UPDATE import_job_files SET status = 'failed', error = ? WHERE id = ?
-        `).run(message, file.id);
-        db.prepare(`
-          UPDATE import_jobs
-          SET processed_files = processed_files + 1,
-              processed_rows = processed_rows + ?,
-              failed_files = failed_files + 1
-          WHERE id = ?
-        `).run(file.totalRows, jobId);
-        appendJobError(jobId, { fileName: file.fileName, error: message });
+        markImportFileFailed(jobId, file, message);
       }
     }
 
@@ -965,10 +1127,12 @@ async function processClaimedJob(jobId: string) {
       anySuccess ? "completed" : "failed",
     );
   } catch (error) {
+    const message = error instanceof Error ? error.message : "导入任务失败";
+    markUnprocessedFilesCancelled(jobId, message);
     markJobTerminal(
       getStoredJob(jobId)!,
       "failed",
-      error instanceof Error ? error.message : "导入任务失败",
+      message,
     );
   } finally {
     await cleanupJobUploads(jobId);

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { errorResponse, requireApiSession } from "@/lib/http";
+import { errorResponse, requireEditorSession } from "@/lib/http";
 import {
   enqueueImportJob,
   type ImportConflictStrategy,
@@ -8,8 +8,8 @@ import {
 export const dynamic = "force-dynamic";
 
 export async function POST(request: NextRequest) {
-  const session = await requireApiSession();
-  if (!session) return errorResponse("请先登录", 401);
+  const session = await requireEditorSession();
+  if (session instanceof NextResponse) return session;
 
   let body: { jobId?: unknown; strategy?: unknown };
   try {

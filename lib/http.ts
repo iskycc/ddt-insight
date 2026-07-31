@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { recordApiCall } from "@/lib/api-stats";
+import { canEditCases, canManageSystem } from "@/lib/permissions";
 import type { AuthSession } from "@/lib/types";
 
 export function errorResponse(message: string, status = 400) {
@@ -29,7 +30,7 @@ export async function requireEditorSession(): Promise<
 > {
   const session = await requireApiSession();
   if (!session) return errorResponse("请先登录", 401);
-  if (!["admin", "editor"].includes(session.role)) {
+  if (!canEditCases(session.role)) {
     return errorResponse("需要编辑权限", 403);
   }
   return session;
@@ -40,7 +41,7 @@ export async function requireAdminSession(): Promise<
 > {
   const session = await requireApiSession();
   if (!session) return errorResponse("请先登录", 401);
-  if (session.role !== "admin") {
+  if (!canManageSystem(session.role)) {
     return errorResponse("需要管理员权限", 403);
   }
   return session;

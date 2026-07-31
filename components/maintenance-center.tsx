@@ -147,10 +147,12 @@ async function responseError(response: Response, fallback: string) {
 
 export function MaintenanceCenter({
   section,
+  readOnly,
   onToast,
   onCasesChanged,
 }: {
   section: MaintenanceSection;
+  readOnly: boolean;
   onToast: ToastHandler;
   onCasesChanged?: () => void;
 }) {
@@ -258,6 +260,7 @@ export function MaintenanceCenter({
 
   async function createBackup(event: FormEvent) {
     event.preventDefault();
+    if (readOnly) return;
     if (backupPassphrase !== backupConfirm) {
       setError("两次输入的备份口令不一致");
       return;
@@ -290,6 +293,7 @@ export function MaintenanceCenter({
 
   async function restoreBackup(event: FormEvent) {
     event.preventDefault();
+    if (readOnly) return;
     if (!restoreFile) {
       setError("请先选择 .ddtbackup 备份文件");
       return;
@@ -322,6 +326,7 @@ export function MaintenanceCenter({
   }
 
   async function runCheckpoint() {
+    if (readOnly) return;
     setBusy("checkpoint");
     setError("");
     try {
@@ -346,6 +351,7 @@ export function MaintenanceCenter({
 
   async function saveSettings(event: FormEvent) {
     event.preventDefault();
+    if (readOnly) return;
     if (!settingsDraft) return;
     setBusy("settings-save");
     setError("");
@@ -372,6 +378,7 @@ export function MaintenanceCenter({
   }
 
   async function cancelRestore() {
+    if (readOnly) return;
     setBusy("restore-cancel");
     setError("");
     try {
@@ -393,6 +400,7 @@ export function MaintenanceCenter({
   }
 
   async function deleteBackup(item: BackupItem) {
+    if (readOnly) return;
     setBusy(`backup-${item.id}`);
     setError("");
     try {
@@ -419,6 +427,7 @@ export function MaintenanceCenter({
   }
 
   async function restoreCase(item: DeletedCase) {
+    if (readOnly) return;
     setBusy(`recycle-${item.id}`);
     setError("");
     try {
@@ -443,6 +452,7 @@ export function MaintenanceCenter({
   }
 
   async function purgeCase(item: DeletedCase) {
+    if (readOnly) return;
     setBusy(`recycle-${item.id}`);
     setError("");
     try {
@@ -543,6 +553,13 @@ export function MaintenanceCenter({
         </div>
       )}
 
+      {readOnly && (
+        <div className="admin-alert">
+          <ShieldCheck size={16} />
+          <span>当前账户可查看系统信息，但系统管理操作仅限管理员。</span>
+        </div>
+      )}
+
       {section === "backup" && diagnostics?.pendingRestore && (
         <div className={styles.pending}>
           <RefreshCw size={18} />
@@ -559,7 +576,7 @@ export function MaintenanceCenter({
           <button
             className="button button-quiet button-small"
             type="button"
-            disabled={busy === "restore-cancel"}
+            disabled={readOnly || busy === "restore-cancel"}
             onClick={() => void cancelRestore()}
           >
             取消恢复
@@ -588,6 +605,7 @@ export function MaintenanceCenter({
                   minLength={8}
                   maxLength={256}
                   required
+                  disabled={readOnly}
                   value={backupPassphrase}
                   onChange={(event) => setBackupPassphrase(event.target.value)}
                   placeholder="至少 8 个字符，请妥善保管"
@@ -601,6 +619,7 @@ export function MaintenanceCenter({
                   minLength={8}
                   maxLength={256}
                   required
+                  disabled={readOnly}
                   value={backupConfirm}
                   onChange={(event) => setBackupConfirm(event.target.value)}
                   placeholder="再次输入备份口令"
@@ -609,7 +628,7 @@ export function MaintenanceCenter({
               <button
                 className="button button-primary"
                 type="submit"
-                disabled={busy === "backup-create"}
+                disabled={readOnly || busy === "backup-create"}
               >
                 {busy === "backup-create" ? (
                   <LoaderCircle className="spin" size={16} />
@@ -635,6 +654,7 @@ export function MaintenanceCenter({
               <button
                 className={styles.filePicker}
                 type="button"
+                disabled={readOnly}
                 onClick={() => fileInputRef.current?.click()}
               >
                 <Upload size={16} />
@@ -645,6 +665,7 @@ export function MaintenanceCenter({
                 className={styles.hiddenInput}
                 type="file"
                 accept=".ddtbackup,application/octet-stream"
+                disabled={readOnly}
                 onChange={selectRestoreFile}
               />
               <label>
@@ -655,6 +676,7 @@ export function MaintenanceCenter({
                   minLength={8}
                   maxLength={256}
                   required
+                  disabled={readOnly}
                   value={restorePassphrase}
                   onChange={(event) => setRestorePassphrase(event.target.value)}
                   placeholder="输入创建该备份时的口令"
@@ -663,7 +685,7 @@ export function MaintenanceCenter({
               <button
                 className="button button-primary"
                 type="submit"
-                disabled={busy === "restore" || !restoreFile}
+                disabled={readOnly || busy === "restore" || !restoreFile}
               >
                 {busy === "restore" ? (
                   <LoaderCircle className="spin" size={16} />
@@ -721,6 +743,7 @@ export function MaintenanceCenter({
                       <button
                         className={styles.iconButton}
                         type="button"
+                        disabled={readOnly}
                         aria-label={`删除备份 ${item.fileName}`}
                         onClick={() =>
                           setConfirmAction({ kind: "backup", item })
@@ -835,7 +858,7 @@ export function MaintenanceCenter({
               <button
                 className="button button-quiet button-small"
                 type="button"
-                disabled={busy === "checkpoint"}
+                disabled={readOnly || busy === "checkpoint"}
                 onClick={() => void runCheckpoint()}
               >
                 {busy === "checkpoint" ? (
@@ -979,7 +1002,7 @@ export function MaintenanceCenter({
                     <button
                       className="button button-quiet button-small"
                       type="button"
-                      disabled={busy === `recycle-${item.id}`}
+                      disabled={readOnly || busy === `recycle-${item.id}`}
                       onClick={() => void restoreCase(item)}
                     >
                       <RotateCcw size={14} />
@@ -989,7 +1012,7 @@ export function MaintenanceCenter({
                       className={styles.iconButton}
                       type="button"
                       aria-label={`彻底删除 ${item.caseId}`}
-                      disabled={busy === `recycle-${item.id}`}
+                      disabled={readOnly || busy === `recycle-${item.id}`}
                       onClick={() =>
                         setConfirmAction({ kind: "purge", item })
                       }
@@ -1048,6 +1071,7 @@ export function MaintenanceCenter({
                 type="number"
                 min={1}
                 required
+                disabled={readOnly}
                 value={settingsDraft.maxImportFiles}
                 onChange={(event) =>
                   setSettingsDraft((current) =>
@@ -1065,6 +1089,7 @@ export function MaintenanceCenter({
                 min={1}
                 max={8192}
                 required
+                disabled={readOnly}
                 value={settingsDraft.maxImportMb}
                 onChange={(event) =>
                   setSettingsDraft((current) =>
@@ -1082,6 +1107,7 @@ export function MaintenanceCenter({
                 min={1}
                 max={8192}
                 required
+                disabled={readOnly}
                 value={settingsDraft.maxArchiveUncompressedMb}
                 onChange={(event) =>
                   setSettingsDraft((current) =>
@@ -1101,6 +1127,7 @@ export function MaintenanceCenter({
                 type="number"
                 min={1}
                 required
+                disabled={readOnly}
                 value={settingsDraft.maxArchiveEntries}
                 onChange={(event) =>
                   setSettingsDraft((current) =>
@@ -1117,7 +1144,7 @@ export function MaintenanceCenter({
             <button
               className="button button-primary"
               type="submit"
-              disabled={busy === "settings-save"}
+              disabled={readOnly || busy === "settings-save"}
             >
               {busy === "settings-save" ? (
                 <LoaderCircle className="spin" size={16} />
@@ -1130,7 +1157,7 @@ export function MaintenanceCenter({
         </section>
       )}
 
-      {confirmAction && (
+      {!readOnly && confirmAction && (
         <div className={styles.confirmBackdrop} role="presentation">
           <div
             className={styles.confirm}

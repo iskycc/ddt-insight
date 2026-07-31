@@ -5,7 +5,7 @@ import {
   getCaseTemplate,
   updateCaseTemplate,
 } from "@/lib/case-management";
-import { errorResponse, requireApiSession } from "@/lib/http";
+import { errorResponse, requireApiSession, requireEditorSession } from "@/lib/http";
 
 export const dynamic = "force-dynamic";
 
@@ -25,8 +25,8 @@ export async function PUT(
   request: NextRequest,
   context: { params: Promise<{ id: string }> },
 ) {
-  const session = await requireApiSession();
-  if (!session) return errorResponse("请先登录", 401);
+  const session = await requireEditorSession();
+  if (session instanceof NextResponse) return session;
   const { id } = await context.params;
   let body: {
     srNum?: string;
@@ -69,8 +69,8 @@ export async function DELETE(
   request: NextRequest,
   context: { params: Promise<{ id: string }> },
 ) {
-  const session = await requireApiSession();
-  if (!session) return errorResponse("请先登录", 401);
+  const session = await requireEditorSession();
+  if (session instanceof NextResponse) return session;
   const { id } = await context.params;
   const template = getCaseTemplate(id);
   if (!template || !deleteCaseTemplate(id)) {

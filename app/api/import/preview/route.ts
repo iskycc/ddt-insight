@@ -3,7 +3,7 @@ import {
   extractSpreadsheetsFromZip,
   isZipFile,
 } from "@/lib/archive";
-import { errorResponse, requireApiSession } from "@/lib/http";
+import { errorResponse, requireEditorSession } from "@/lib/http";
 import {
   createImportPreview,
   type ImportFileError,
@@ -23,8 +23,8 @@ function requestAddress(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const session = await requireApiSession();
-  if (!session) return errorResponse("请先登录", 401);
+  const session = await requireEditorSession();
+  if (session instanceof NextResponse) return session;
 
   let formData: FormData;
   try {

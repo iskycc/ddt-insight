@@ -96,6 +96,11 @@ import {
   getJourneySteps,
   isJourneyCase,
 } from "@/lib/case-data";
+import {
+  canEditCases,
+  canManageSystem,
+  userRoleLabel,
+} from "@/lib/permissions";
 
 type WorkspaceView =
   | "cases"
@@ -212,6 +217,8 @@ export function WorkspaceClient({
   const [toast, setToast] = useState("");
   const [deepLinkReady, setDeepLinkReady] = useState(false);
   const requestSequence = useRef(0);
+  const caseWriteAllowed = canEditCases(role);
+  const systemWriteAllowed = canManageSystem(role);
 
   useEffect(() => {
     setCurrentDisplayName(displayName);
@@ -497,75 +504,71 @@ export function WorkspaceClient({
             <UserRound size={18} />
             个人信息
           </button>
-          {role === "admin" && (
-            <>
-              <small>系统管理</small>
-              <button
-                className={classNames(view === "users" && "active")}
-                type="button"
-                onClick={() => selectView("users")}
-              >
-                <Users size={18} />
-                用户管理
-              </button>
-              <button
-                className={classNames(view === "ldap" && "active")}
-                type="button"
-                onClick={() => selectView("ldap")}
-              >
-                <Network size={18} />
-                LDAP
-              </button>
-              <button
-                className={classNames(view === "imports" && "active")}
-                type="button"
-                onClick={() => selectView("imports")}
-              >
-                <FileClock size={18} />
-                导入来源
-              </button>
-              <button
-                className={classNames(view === "settings" && "active")}
-                type="button"
-                onClick={() => selectView("settings")}
-              >
-                <Settings size={18} />
-                系统配置
-              </button>
-              <button
-                className={classNames(view === "backups" && "active")}
-                type="button"
-                onClick={() => selectView("backups")}
-              >
-                <Archive size={18} />
-                备份与恢复
-              </button>
-              <button
-                className={classNames(view === "systemInfo" && "active")}
-                type="button"
-                onClick={() => selectView("systemInfo")}
-              >
-                <Gauge size={18} />
-                系统信息
-              </button>
-              <button
-                className={classNames(view === "recycle" && "active")}
-                type="button"
-                onClick={() => selectView("recycle")}
-              >
-                <Trash2 size={18} />
-                回收站
-              </button>
-              <button
-                className={classNames(view === "audit" && "active")}
-                type="button"
-                onClick={() => selectView("audit")}
-              >
-                <ScrollText size={18} />
-                审计日志
-              </button>
-            </>
-          )}
+          <small>系统管理</small>
+          <button
+            className={classNames(view === "users" && "active")}
+            type="button"
+            onClick={() => selectView("users")}
+          >
+            <Users size={18} />
+            用户管理
+          </button>
+          <button
+            className={classNames(view === "ldap" && "active")}
+            type="button"
+            onClick={() => selectView("ldap")}
+          >
+            <Network size={18} />
+            LDAP
+          </button>
+          <button
+            className={classNames(view === "imports" && "active")}
+            type="button"
+            onClick={() => selectView("imports")}
+          >
+            <FileClock size={18} />
+            导入来源
+          </button>
+          <button
+            className={classNames(view === "settings" && "active")}
+            type="button"
+            onClick={() => selectView("settings")}
+          >
+            <Settings size={18} />
+            系统配置
+          </button>
+          <button
+            className={classNames(view === "backups" && "active")}
+            type="button"
+            onClick={() => selectView("backups")}
+          >
+            <Archive size={18} />
+            备份与恢复
+          </button>
+          <button
+            className={classNames(view === "systemInfo" && "active")}
+            type="button"
+            onClick={() => selectView("systemInfo")}
+          >
+            <Gauge size={18} />
+            系统信息
+          </button>
+          <button
+            className={classNames(view === "recycle" && "active")}
+            type="button"
+            onClick={() => selectView("recycle")}
+          >
+            <Trash2 size={18} />
+            回收站
+          </button>
+          <button
+            className={classNames(view === "audit" && "active")}
+            type="button"
+            onClick={() => selectView("audit")}
+          >
+            <ScrollText size={18} />
+            审计日志
+          </button>
         </nav>
 
         <div className="sidebar-offline-card">
@@ -584,7 +587,7 @@ export function WorkspaceClient({
           <p>
             <strong title={currentDisplayName}>{currentDisplayName}</strong>
             <small>
-              {role === "admin" ? "系统管理员" : "用例编辑员"} ·{" "}
+              {userRoleLabel(role)} ·{" "}
               {provider === "ldap" ? "LDAP" : username}
             </small>
           </p>
@@ -646,6 +649,7 @@ export function WorkspaceClient({
 
         {view === "cases" && (
           <CaseManager
+            readOnly={!caseWriteAllowed}
             cases={cases}
             groups={groups}
             query={query}
@@ -662,6 +666,7 @@ export function WorkspaceClient({
             onGroupChange={setSelectedGroup}
             onCaseSelect={setSelectedCaseId}
             onCaseSelectionChange={(caseId, checked) => {
+              if (!caseWriteAllowed) return;
               setSelectedCaseIds((current) =>
                 checked
                   ? current.includes(caseId)
@@ -671,6 +676,7 @@ export function WorkspaceClient({
               );
             }}
             onLoadedSelectionChange={(checked) => {
+              if (!caseWriteAllowed) return;
               const loaded = new Set(cases.map((item) => item.caseId));
               setSelectedCaseIds((current) =>
                 checked
@@ -679,7 +685,9 @@ export function WorkspaceClient({
               );
             }}
             onLoadMore={() => loadCases(false)}
-            onImport={() => setImportOpen(true)}
+            onImport={() => {
+              if (caseWriteAllowed) setImportOpen(true);
+            }}
             onCaseUpdate={(data) => {
               const nextCaseId = String(
                 getCaseCell(data, "CaseID") ?? selectedCaseId,
@@ -770,6 +778,7 @@ export function WorkspaceClient({
           <CaseManagementTools
             key={view}
             section="search"
+            readOnly={!caseWriteAllowed}
             onOpenCase={(caseId) => {
               setSelectedGroup("");
               setQuery(caseId);
@@ -784,17 +793,25 @@ export function WorkspaceClient({
             key={view}
             section="templates"
             initialSrNum={selectedGroup}
+            readOnly={!caseWriteAllowed}
           />
         )}
 
         {view === "overview" && stats && (
-          <WorkspaceOverview stats={stats} onImport={() => setImportOpen(true)} />
+          <WorkspaceOverview
+            stats={stats}
+            readOnly={!caseWriteAllowed}
+            onImport={() => {
+              if (caseWriteAllowed) setImportOpen(true);
+            }}
+          />
         )}
 
         {view === "api" && <ApiGuide />}
 
         {view === "profile" && (
           <ProfileSettings
+            readOnly={!caseWriteAllowed}
             onProfileUpdated={(profile) =>
               setCurrentDisplayName(profile.displayName)
             }
@@ -802,31 +819,48 @@ export function WorkspaceClient({
           />
         )}
 
-        {view === "users" && role === "admin" && (
-          <UserManagement currentUserId={userId} onToast={setToast} />
+        {view === "users" && (
+          <UserManagement
+            currentUserId={userId}
+            canManage={systemWriteAllowed}
+            onToast={setToast}
+          />
         )}
 
-        {view === "ldap" && role === "admin" && (
-          <LdapSettings onToast={setToast} />
+        {view === "ldap" && (
+          <LdapSettings canManage={systemWriteAllowed} onToast={setToast} />
         )}
 
-        {view === "imports" && role === "admin" && <ImportSourceTracker />}
+        {view === "imports" && <ImportSourceTracker />}
 
-        {view === "settings" && role === "admin" && (
-          <MaintenanceCenter section="settings" onToast={setToast} />
+        {view === "settings" && (
+          <MaintenanceCenter
+            section="settings"
+            readOnly={!systemWriteAllowed}
+            onToast={setToast}
+          />
         )}
 
-        {view === "backups" && role === "admin" && (
-          <MaintenanceCenter section="backup" onToast={setToast} />
+        {view === "backups" && (
+          <MaintenanceCenter
+            section="backup"
+            readOnly={!systemWriteAllowed}
+            onToast={setToast}
+          />
         )}
 
-        {view === "systemInfo" && role === "admin" && (
-          <MaintenanceCenter section="diagnostics" onToast={setToast} />
+        {view === "systemInfo" && (
+          <MaintenanceCenter
+            section="diagnostics"
+            readOnly={!systemWriteAllowed}
+            onToast={setToast}
+          />
         )}
 
-        {view === "recycle" && role === "admin" && (
+        {view === "recycle" && (
           <MaintenanceCenter
             section="recycle"
+            readOnly={!systemWriteAllowed}
             onToast={setToast}
             onCasesChanged={() => {
               setSelectedCase(null);
@@ -837,10 +871,10 @@ export function WorkspaceClient({
           />
         )}
 
-        {view === "audit" && role === "admin" && <AuditLogView />}
+        {view === "audit" && <AuditLogView />}
       </div>
 
-      {importOpen && (
+      {caseWriteAllowed && importOpen && (
         <ImportCenter
           onClose={() => setImportOpen(false)}
           onImported={refreshAfterImport}
@@ -859,6 +893,7 @@ export function WorkspaceClient({
 }
 
 function CaseManager({
+  readOnly,
   cases,
   groups,
   query,
@@ -884,6 +919,7 @@ function CaseManager({
   onBulkSelectionCleared,
   onToast,
 }: {
+  readOnly: boolean;
   cases: CaseListItem[];
   groups: GroupItem[];
   query: string;
@@ -1172,7 +1208,7 @@ function CaseManager({
   }
 
   async function removeSelectedCase() {
-    if (!selectedCaseId || deleting) return;
+    if (readOnly || !selectedCaseId || deleting) return;
     setDeleting(true);
 
     try {
@@ -1219,14 +1255,16 @@ function CaseManager({
                 : ""}
             </span>
           </div>
-          <button
-            className="icon-button add-case-button"
-            type="button"
-            aria-label="导入用例"
-            onClick={onImport}
-          >
-            <Plus size={19} />
-          </button>
+          {!readOnly && (
+            <button
+              className="icon-button add-case-button"
+              type="button"
+              aria-label="导入用例"
+              onClick={onImport}
+            >
+              <Plus size={19} />
+            </button>
+          )}
         </div>
 
         <div className="case-list-width-toolbar">
@@ -1236,16 +1274,28 @@ function CaseManager({
             {caseListWidth !== null && <em>{caseListWidth}px</em>}
           </span>
           <div>
-            <button
-              type="button"
-              title={allLoadedSelected ? "取消选择已加载用例" : "选择已加载用例"}
-              aria-label={
-                allLoadedSelected ? "取消选择已加载用例" : "选择已加载用例"
-              }
-              onClick={() => onLoadedSelectionChange(!allLoadedSelected)}
-            >
-              {allLoadedSelected ? <Check size={14} /> : <ListChecks size={14} />}
-            </button>
+            {!readOnly && (
+              <button
+                type="button"
+                title={
+                  allLoadedSelected
+                    ? "取消选择已加载用例"
+                    : "选择已加载用例"
+                }
+                aria-label={
+                  allLoadedSelected
+                    ? "取消选择已加载用例"
+                    : "选择已加载用例"
+                }
+                onClick={() => onLoadedSelectionChange(!allLoadedSelected)}
+              >
+                {allLoadedSelected ? (
+                  <Check size={14} />
+                ) : (
+                  <ListChecks size={14} />
+                )}
+              </button>
+            )}
             <button
               type="button"
               title="紧凑宽度"
@@ -1328,23 +1378,25 @@ function CaseManager({
                     )}
                     key={item.caseId}
                   >
-                    <button
-                      className={classNames(
-                        "case-list-select",
-                        checked && "checked",
-                      )}
-                      type="button"
-                      role="checkbox"
-                      aria-checked={checked}
-                      aria-label={`${checked ? "取消选择" : "选择"} ${item.caseId}`}
-                      onClick={() =>
-                        onCaseSelectionChange(item.caseId, !checked)
-                      }
-                    >
-                      <span className="custom-checkbox-box">
-                        {checked && <Check size={12} strokeWidth={3} />}
-                      </span>
-                    </button>
+                    {!readOnly && (
+                      <button
+                        className={classNames(
+                          "case-list-select",
+                          checked && "checked",
+                        )}
+                        type="button"
+                        role="checkbox"
+                        aria-checked={checked}
+                        aria-label={`${checked ? "取消选择" : "选择"} ${item.caseId}`}
+                        onClick={() =>
+                          onCaseSelectionChange(item.caseId, !checked)
+                        }
+                      >
+                        <span className="custom-checkbox-box">
+                          {checked && <Check size={12} strokeWidth={3} />}
+                        </span>
+                      </button>
+                    )}
                     <button
                       className={classNames(
                         "case-list-item",
@@ -1442,7 +1494,7 @@ function CaseManager({
       </section>
 
       <section className="case-detail-panel">
-        {selectedCaseIds.length > 0 ? (
+        {!readOnly && selectedCaseIds.length > 0 ? (
           <>
             <div className="detail-toolbar case-bulk-toolbar">
               <div className="case-breadcrumb">
@@ -1528,15 +1580,19 @@ function CaseManager({
                     </>
                   )}
                 </button>
-                <span className="toolbar-divider" />
-                <button
-                  className="button button-danger button-small"
-                  type="button"
-                  onClick={() => setDeleteOpen(true)}
-                >
-                  <Trash2 size={15} />
-                  删除
-                </button>
+                {!readOnly && (
+                  <>
+                    <span className="toolbar-divider" />
+                    <button
+                      className="button button-danger button-small"
+                      type="button"
+                      onClick={() => setDeleteOpen(true)}
+                    >
+                      <Trash2 size={15} />
+                      删除
+                    </button>
+                  </>
+                )}
                 <a
                   className="button button-dark button-small"
                   href={`/api/export?caseId=${encodeURIComponent(selectedCaseId)}`}
@@ -1645,7 +1701,7 @@ function CaseManager({
                 <span>
                   <Pencil size={11} />
                   {Object.keys(visibleCaseData ?? {}).length} 个字段 ·
-                  悬浮字段可编辑
+                  {readOnly ? "只读查看" : "悬浮字段可编辑"}
                 </span>
               </div>
 
@@ -1663,6 +1719,7 @@ function CaseManager({
                     column={column}
                     value={value}
                     stepName={resolvedJourneyStep || undefined}
+                    readOnly={readOnly}
                     onUpdated={(data) => {
                       onCaseUpdate(data);
                       onToast(
@@ -1677,6 +1734,7 @@ function CaseManager({
               <CaseHistoryPanel
                 caseId={selectedCaseId}
                 revision={historyRevision}
+                readOnly={readOnly}
                 onError={onToast}
                 onRestored={(data) => {
                   onCaseUpdate(data);
@@ -1702,19 +1760,21 @@ function CaseManager({
               系统会读取 data Sheet，或将 step1 至 stepN
               组合为用户旅程，并以 CaseID 建立高性能索引。
             </p>
-            <button
-              className="button button-primary"
-              type="button"
-              onClick={onImport}
-            >
-              <UploadCloud size={17} />
-              导入用例表格
-            </button>
+            {!readOnly && (
+              <button
+                className="button button-primary"
+                type="button"
+                onClick={onImport}
+              >
+                <UploadCloud size={17} />
+                导入用例表格
+              </button>
+            )}
           </div>
         )}
       </section>
 
-      {deleteOpen && (
+      {!readOnly && deleteOpen && (
         <div
           className="modal-backdrop"
           onMouseDown={(event) => {
@@ -1792,11 +1852,13 @@ function historyDate(value: string) {
 function CaseHistoryPanel({
   caseId,
   revision,
+  readOnly,
   onError,
   onRestored,
 }: {
   caseId: string;
   revision: number;
+  readOnly: boolean;
   onError: (message: string) => void;
   onRestored: (data: CaseData) => void;
 }) {
@@ -1864,6 +1926,7 @@ function CaseHistoryPanel({
   }, [caseId, loadPage, revision]);
 
   async function restoreVersion(item: CaseHistoryItem) {
+    if (readOnly) return;
     setRestoring(true);
     try {
       const response = await fetch(
@@ -1931,15 +1994,17 @@ function CaseHistoryPanel({
                     <time dateTime={item.createdAt}>
                       {historyDate(item.createdAt)}
                     </time>
-                    <button
-                      className="case-history-restore"
-                      type="button"
-                      title={`恢复到变更 #${item.id} 发生前`}
-                      onClick={() => setRestoreCandidate(item)}
-                    >
-                      <RotateCcw size={13} />
-                      恢复至修改前
-                    </button>
+                    {!readOnly && (
+                      <button
+                        className="case-history-restore"
+                        type="button"
+                        title={`恢复到变更 #${item.id} 发生前`}
+                        onClick={() => setRestoreCandidate(item)}
+                      >
+                        <RotateCcw size={13} />
+                        恢复至修改前
+                      </button>
+                    )}
                   </div>
 
                   <div className="case-history-actor">
@@ -2048,7 +2113,7 @@ function CaseHistoryPanel({
         </button>
       )}
 
-      {restoreCandidate && (
+      {!readOnly && restoreCandidate && (
         <div className="modal-backdrop">
           <section
             className="case-delete-dialog"
@@ -2099,6 +2164,7 @@ function EditableField({
   column,
   value,
   stepName,
+  readOnly,
   onUpdated,
   onError,
 }: {
@@ -2106,6 +2172,7 @@ function EditableField({
   column: string;
   value: unknown;
   stepName?: string;
+  readOnly: boolean;
   onUpdated: (data: CaseData) => void;
   onError: (message: string) => void;
 }) {
@@ -2145,6 +2212,7 @@ function EditableField({
   }, [confirming, saving]);
 
   function reviewChange() {
+    if (readOnly) return;
     if (draft === formatValue(value)) {
       setEditing(false);
       return;
@@ -2153,6 +2221,7 @@ function EditableField({
   }
 
   async function save() {
+    if (readOnly) return;
     setSaving(true);
 
     try {
@@ -2260,19 +2329,21 @@ function EditableField({
             <Copy size={14} />
             复制
           </button>
-          <button
-            className="field-edit-button"
-            type="button"
-            aria-label={`编辑 ${column}`}
-            onClick={() => setEditing(true)}
-          >
-            <Pencil size={14} />
-            编辑
-          </button>
+          {!readOnly && (
+            <button
+              className="field-edit-button"
+              type="button"
+              aria-label={`编辑 ${column}`}
+              onClick={() => setEditing(true)}
+            >
+              <Pencil size={14} />
+              编辑
+            </button>
+          )}
         </div>
       )}
 
-      {confirming && (
+      {!readOnly && confirming && (
         <div
           className="modal-backdrop"
           onMouseDown={(event) => {
@@ -2351,9 +2422,11 @@ function EditableField({
 
 function WorkspaceOverview({
   stats,
+  readOnly,
   onImport,
 }: {
   stats: DashboardStats;
+  readOnly: boolean;
   onImport: () => void;
 }) {
   const maxTimeline = Math.max(...stats.timeline.map((item) => item.count), 1);
@@ -2372,10 +2445,16 @@ function WorkspaceOverview({
             <Download size={16} />
             导出全部
           </a>
-          <button className="button button-primary" type="button" onClick={onImport}>
-            <Plus size={16} />
-            导入表格
-          </button>
+          {!readOnly && (
+            <button
+              className="button button-primary"
+              type="button"
+              onClick={onImport}
+            >
+              <Plus size={16} />
+              导入表格
+            </button>
+          )}
         </div>
       </div>
 

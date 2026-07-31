@@ -250,7 +250,7 @@ function createDatabase() {
       email TEXT NOT NULL DEFAULT '',
       groups_json TEXT NOT NULL DEFAULT '[]',
       provider TEXT NOT NULL CHECK (provider IN ('local', 'ldap')),
-      role TEXT NOT NULL CHECK (role IN ('admin', 'editor')),
+      role TEXT NOT NULL CHECK (role IN ('admin', 'editor', 'viewer')),
       enabled INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0, 1)),
       is_bootstrap_admin INTEGER NOT NULL DEFAULT 0
         CHECK (is_bootstrap_admin IN (0, 1)),
@@ -278,7 +278,7 @@ function createDatabase() {
       group_search_filter TEXT NOT NULL DEFAULT '(member={{userDn}})',
       group_name_attribute TEXT NOT NULL DEFAULT 'cn',
       default_role TEXT NOT NULL DEFAULT 'editor'
-        CHECK (default_role IN ('admin', 'editor')),
+        CHECK (default_role IN ('admin', 'editor', 'viewer')),
       tls_reject_unauthorized INTEGER NOT NULL DEFAULT 1
         CHECK (tls_reject_unauthorized IN (0, 1)),
       connect_timeout_ms INTEGER NOT NULL DEFAULT 5000,
@@ -388,6 +388,111 @@ function createDatabase() {
       ALTER TABLE ldap_config
       ADD COLUMN group_name_attribute TEXT NOT NULL DEFAULT 'cn'
     `);
+  }
+
+  const roleConstraintSql = database
+    .prepare(`
+      SELECT name, sql FROM sqlite_master
+      WHERE type = 'table' AND name IN ('users', 'ldap_config')
+    `)
+    .all() as Array<{ name: string; sql: string }>;
+  const roleConstraintByTable = new Map(
+    roleConstraintSql.map((entry) => [entry.name, entry.sql]),
+  );
+
+  if (!roleConstraintByTable.get("users")?.includes("'viewer'")) {
+    database.transaction(() => {
+      database.exec(`
+        DROP INDEX IF EXISTS idx_users_provider;
+        DROP INDEX IF EXISTS idx_users_bootstrap_admin;
+
+        ALTER TABLE users RENAME TO users_before_viewer_role;
+
+        CREATE TABLE users (
+          id TEXT PRIMARY KEY,
+          username TEXT NOT NULL UNIQUE COLLATE NOCASE,
+          display_name TEXT NOT NULL,
+          email TEXT NOT NULL DEFAULT '',
+          groups_json TEXT NOT NULL DEFAULT '[]',
+          provider TEXT NOT NULL CHECK (provider IN ('local', 'ldap')),
+          role TEXT NOT NULL CHECK (role IN ('admin', 'editor', 'viewer')),
+          enabled INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0, 1)),
+          is_bootstrap_admin INTEGER NOT NULL DEFAULT 0
+            CHECK (is_bootstrap_admin IN (0, 1)),
+          password_hash TEXT,
+          last_login_at TEXT,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        );
+
+        INSERT INTO users (
+          id, username, display_name, email, groups_json, provider, role,
+          enabled, is_bootstrap_admin, password_hash, last_login_at,
+          created_at, updated_at
+        )
+        SELECT
+          id, username, display_name, email, groups_json, provider, role,
+          enabled, is_bootstrap_admin, password_hash, last_login_at,
+          created_at, updated_at
+        FROM users_before_viewer_role;
+
+        DROP TABLE users_before_viewer_role;
+
+        CREATE INDEX idx_users_provider
+          ON users (provider, enabled, username COLLATE NOCASE);
+        CREATE UNIQUE INDEX idx_users_bootstrap_admin
+          ON users (is_bootstrap_admin)
+          WHERE is_bootstrap_admin = 1;
+      `);
+    })();
+  }
+
+  if (!roleConstraintByTable.get("ldap_config")?.includes("'viewer'")) {
+    database.transaction(() => {
+      database.exec(`
+        ALTER TABLE ldap_config RENAME TO ldap_config_before_viewer_role;
+
+        CREATE TABLE ldap_config (
+          id INTEGER PRIMARY KEY CHECK (id = 1),
+          enabled INTEGER NOT NULL DEFAULT 0 CHECK (enabled IN (0, 1)),
+          url TEXT NOT NULL DEFAULT '',
+          bind_dn TEXT NOT NULL DEFAULT '',
+          bind_password_encrypted TEXT NOT NULL DEFAULT '',
+          user_base_dn TEXT NOT NULL DEFAULT '',
+          user_filter TEXT NOT NULL DEFAULT '(uid={{username}})',
+          display_name_attribute TEXT NOT NULL DEFAULT 'displayName',
+          mail_attribute TEXT NOT NULL DEFAULT 'mail',
+          group_attribute TEXT NOT NULL DEFAULT 'memberOf',
+          group_search_base TEXT NOT NULL DEFAULT '',
+          group_search_filter TEXT NOT NULL DEFAULT '(member={{userDn}})',
+          group_name_attribute TEXT NOT NULL DEFAULT 'cn',
+          default_role TEXT NOT NULL DEFAULT 'editor'
+            CHECK (default_role IN ('admin', 'editor', 'viewer')),
+          tls_reject_unauthorized INTEGER NOT NULL DEFAULT 1
+            CHECK (tls_reject_unauthorized IN (0, 1)),
+          connect_timeout_ms INTEGER NOT NULL DEFAULT 5000,
+          updated_at TEXT NOT NULL,
+          updated_by TEXT NOT NULL DEFAULT ''
+        );
+
+        INSERT INTO ldap_config (
+          id, enabled, url, bind_dn, bind_password_encrypted, user_base_dn,
+          user_filter, display_name_attribute, mail_attribute, group_attribute,
+          group_search_base, group_search_filter, group_name_attribute,
+          default_role, tls_reject_unauthorized, connect_timeout_ms,
+          updated_at, updated_by
+        )
+        SELECT
+          id, enabled, url, bind_dn, bind_password_encrypted, user_base_dn,
+          user_filter, display_name_attribute, mail_attribute, group_attribute,
+          group_search_base, group_search_filter, group_name_attribute,
+          default_role, tls_reject_unauthorized, connect_timeout_ms,
+          updated_at, updated_by
+        FROM ldap_config_before_viewer_role;
+
+        DROP TABLE ldap_config_before_viewer_role;
+      `);
+    })();
   }
 
   const caseColumns = database

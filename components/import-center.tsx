@@ -124,6 +124,31 @@ function isTerminal(status: JobStatus) {
   return ["completed", "failed", "cancelled"].includes(status);
 }
 
+function hasFileError(file: ImportFileSnapshot) {
+  return file.status === "failed" || Boolean(file.error);
+}
+
+function getFileStatusLabel(file: ImportFileSnapshot, jobStatus?: JobStatus) {
+  if (hasFileError(file)) return "未导入";
+  if (file.status === "completed") return "已处理";
+  if (file.status === "importing") return "导入中";
+  if (file.status === "cancelled") return "已取消";
+  if (jobStatus === "failed" || jobStatus === "cancelled") return "未处理";
+  return "可导入";
+}
+
+function getFileStatusDetail(file: ImportFileSnapshot, jobStatus?: JobStatus) {
+  if (file.error) return file.error;
+  if (file.status === "completed") {
+    return `新增 ${file.insertedRows} · 覆盖 ${file.updatedRows} · 跳过 ${file.skippedRows + file.unchangedRows}`;
+  }
+  if (file.status === "importing") return `正在处理 ${file.totalRows} 行用例`;
+  if (file.status === "cancelled") return "任务取消前未写入该表格";
+  if (jobStatus === "failed") return "任务终止，未写入该表格";
+  if (jobStatus === "cancelled") return "任务已取消，未写入该表格";
+  return `${file.totalRows} 行 · 新增 ${file.newRows} · 覆盖 ${file.changedRows} · 无变化 ${file.unchangedRows}`;
+}
+
 export function ImportCenter({
   onClose,
   onImported,
@@ -188,10 +213,13 @@ export function ImportCenter({
       void Promise.resolve()
         .then(() => onImported())
         .then(() => {
+          const excludedMessage = job.result.failedFiles
+            ? `，${numberFormatter.format(job.result.failedFiles)} 个问题表格未导入，原因已记录`
+            : "";
           onToast(
             job.status === "completed"
-              ? `导入完成：新增 ${numberFormatter.format(job.result.inserted)} 条，覆盖 ${numberFormatter.format(job.result.updated)} 条`
-              : `部分文件已写入：新增 ${numberFormatter.format(job.result.inserted)} 条，覆盖 ${numberFormatter.format(job.result.updated)} 条`,
+              ? `导入完成：新增 ${numberFormatter.format(job.result.inserted)} 条，覆盖 ${numberFormatter.format(job.result.updated)} 条${excludedMessage}`
+              : `部分文件已写入：新增 ${numberFormatter.format(job.result.inserted)} 条，覆盖 ${numberFormatter.format(job.result.updated)} 条${excludedMessage}`,
           );
         })
         .catch(() => {
@@ -326,6 +354,13 @@ export function ImportCenter({
   }
 
   const locked = busy || job?.status === "queued" || job?.status === "running";
+  const importableFiles =
+    job?.files.filter((file) => !hasFileError(file)) ?? [];
+  const excludedFiles = job?.files.filter(hasFileError) ?? [];
+  const excludedCount = Math.max(
+    excludedFiles.length,
+    job?.result.failedFiles ?? 0,
+  );
 
   return (
     <div
@@ -509,10 +544,31 @@ export function ImportCenter({
                 </div>
               )}
 
-              {job.status === "previewed" && job.errors.length > 0 && (
+              {job.status === "previewed" && excludedCount > 0 && (
+                <div className={styles.partialNotice} role="status">
+                  <span className={styles.partialNoticeIcon}>
+                    <AlertTriangle size={18} />
+                  </span>
+                  <div>
+                    <strong>
+                      已排除 {excludedCount} 个问题表格，可继续导入{" "}
+                      {importableFiles.length} 个
+                    </strong>
+                    <span>
+                      被排除的表格不会写入；表格名称和失败原因会永久保留在“导入来源”中。
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              {job.errors.length > 0 && (
                 <div className={styles.previewErrors}>
                   <div className={styles.sectionHeading}>
-                    <strong>将跳过的问题文件</strong>
+                    <strong>
+                      {job.status === "previewed"
+                        ? "将排除的问题表格"
+                        : "未导入的问题表格"}
+                    </strong>
                     <span>{job.errors.length} 项</span>
                   </div>
                   {job.errors.map((error, index) => (
@@ -534,45 +590,50 @@ export function ImportCenter({
 
               <div className={styles.previewFiles}>
                 <div className={styles.sectionHeading}>
-                  <strong>文件影响</strong>
-                  <span>{job.files.length} 项</span>
+                  <strong>
+                    {job.status === "previewed"
+                      ? "可导入表格"
+                      : job.status === "completed"
+                        ? "已处理表格"
+                        : "表格状态"}
+                  </strong>
+                  <span>{importableFiles.length} 项</span>
                 </div>
-                {job.files.map((file) => (
+                {importableFiles.map((file) => (
                   <div className={styles.previewFile} key={file.id}>
-                    <span
-                      className={
-                        file.error ? styles.fileErrorIcon : styles.fileOkIcon
-                      }
-                    >
-                      {file.error ? (
-                        <AlertTriangle size={16} />
-                      ) : (
-                        <Check size={16} />
-                      )}
+                    <span className={styles.fileOkIcon}>
+                      <Check size={16} />
                     </span>
                     <div>
                       <strong>{file.fileName}</strong>
-                      {file.error ? (
-                        <small>{file.error}</small>
-                      ) : (
-                        <small>
-                          {file.totalRows} 行 · 新增 {file.newRows} · 覆盖{" "}
-                          {file.changedRows} · 无变化 {file.unchangedRows}
-                        </small>
-                      )}
+                      <small>{getFileStatusDetail(file, job.status)}</small>
                     </div>
                   </div>
                 ))}
+                {!importableFiles.length && (
+                  <div className={styles.noImportableFiles}>
+                    没有通过校验的表格，无法启动导入
+                  </div>
+                )}
               </div>
 
               {job.status === "completed" && (
-                <div className={styles.resultBanner}>
-                  <Check size={18} />
+                <div
+                  className={`${styles.resultBanner} ${
+                    job.result.failedFiles > 0 ? styles.partialResult : ""
+                  }`}
+                >
+                  {job.result.failedFiles > 0 ? (
+                    <AlertTriangle size={18} />
+                  ) : (
+                    <Check size={18} />
+                  )}
                   <span>
-                    实际新增 {job.result.inserted} 条，覆盖{" "}
-                    {job.result.updated} 条，跳过 {job.result.skipped} 条
+                    {job.result.failedFiles > 0 ? "有效表格已完成：" : ""}
+                    实际新增 {job.result.inserted} 条，覆盖 {job.result.updated}
+                    条，跳过 {job.result.skipped} 条
                     {job.result.failedFiles > 0
-                      ? `，${job.result.failedFiles} 个文件失败`
+                      ? `；${job.result.failedFiles} 个问题表格未导入，原因已记录`
                       : ""}
                   </span>
                 </div>
@@ -580,15 +641,9 @@ export function ImportCenter({
             </>
           )}
 
-          {(Boolean(requestError) || Boolean(job?.errors.length)) && (
+          {Boolean(requestError) && (
             <div className={styles.errors} role="alert">
-              {requestError && <p>{requestError}</p>}
-              {job?.errors.map((error, index) => (
-                <p key={`${error.fileName}:${index}`}>
-                  <strong>{error.fileName}</strong>
-                  {error.error}
-                </p>
-              ))}
+              <p>{requestError}</p>
             </div>
           )}
         </div>
@@ -647,7 +702,9 @@ export function ImportCenter({
               ) : (
                 <Play size={17} />
               )}
-              启动后台导入
+              {excludedCount > 0
+                ? `排除 ${excludedCount} 个并导入`
+                : "启动后台导入"}
             </button>
           )}
         </footer>
@@ -717,7 +774,7 @@ export function ImportSourceTracker() {
           </span>
           <div>
             <h2>导入来源</h2>
-            <p>按批次追踪来源文件、执行策略与实际影响</p>
+            <p>按批次追踪来源表格、排除原因、执行策略与实际影响</p>
           </div>
         </div>
         <button
@@ -780,54 +837,100 @@ export function ImportSourceTracker() {
         }`}
         aria-busy={loading}
       >
-        {items.map((item) => (
-          <article className={styles.sourceCard} key={item.id}>
-            <div className={styles.sourceMeta}>
-              <span
-                className={`${styles.statusDot} ${styles[item.status]}`}
-                aria-hidden="true"
-              />
-              <div>
-                <strong>{statusLabels[item.status]}</strong>
-                <small>
-                  {item.actor.displayName || item.actor.username} ·{" "}
-                  {new Intl.DateTimeFormat("zh-CN", {
-                    dateStyle: "medium",
-                    timeStyle: "short",
-                  }).format(new Date(item.createdAt))}
-                </small>
+        {items.map((item) => {
+          const recordedFileErrors = new Set(
+            item.files
+              .filter((file) => file.error)
+              .map((file) => `${file.fileName}\u0000${file.error}`),
+          );
+          const additionalErrors = item.errors.filter(
+            (itemError) =>
+              !recordedFileErrors.has(
+                `${itemError.fileName}\u0000${itemError.error}`,
+              ),
+          );
+          const isPartial =
+            item.status === "completed" && item.result.failedFiles > 0;
+
+          return (
+            <article className={styles.sourceCard} key={item.id}>
+              <div className={styles.sourceMeta}>
+                <span
+                  className={`${styles.statusDot} ${styles[
+                    isPartial ? "partial" : item.status
+                  ]}`}
+                  aria-hidden="true"
+                />
+                <div>
+                  <strong>
+                    {isPartial ? "部分完成" : statusLabels[item.status]}
+                  </strong>
+                  <small>
+                    {item.actor.displayName || item.actor.username} ·{" "}
+                    {new Intl.DateTimeFormat("zh-CN", {
+                      dateStyle: "medium",
+                      timeStyle: "short",
+                    }).format(new Date(item.createdAt))}
+                  </small>
+                </div>
+                <code>{item.id.slice(0, 8)}</code>
               </div>
-              <code>{item.id.slice(0, 8)}</code>
-            </div>
-            <div className={styles.sourceStats}>
-              <span>文件 {item.totals.files}</span>
-              <span>总计 {item.totals.rows}</span>
-              <span>新增 {item.result.inserted}</span>
-              <span>覆盖 {item.result.updated}</span>
-              <span>跳过 {item.result.skipped + item.result.unchanged}</span>
-            </div>
-            <div className={styles.sourceFiles}>
-              {item.files.map((file) => (
-                <span key={file.id} title={file.error || file.fileName}>
-                  <FileSpreadsheet size={13} />
-                  {file.fileName}
-                </span>
-              ))}
-            </div>
-            {item.errors.length > 0 && (
-              <div className={styles.sourceErrors}>
-                <strong>失败文件</strong>
-                {item.errors.map((error, index) => (
-                  <span key={`${error.fileName}:${index}`} title={error.error}>
-                    <AlertTriangle size={13} />
-                    <em>{error.fileName}</em>
-                    <small>{error.error}</small>
+              <div className={styles.sourceStats}>
+                <span>文件 {item.totals.files}</span>
+                <span>总计 {item.totals.rows}</span>
+                <span>新增 {item.result.inserted}</span>
+                <span>覆盖 {item.result.updated}</span>
+                <span>跳过 {item.result.skipped + item.result.unchanged}</span>
+                {item.result.failedFiles > 0 && (
+                  <span className={styles.failedStat}>
+                    未导入 {item.result.failedFiles}
                   </span>
+                )}
+              </div>
+              <div className={styles.sourceFiles}>
+                {item.files.map((file) => (
+                  <div
+                    className={`${styles.sourceFile} ${
+                      hasFileError(file)
+                        ? styles.sourceFileError
+                        : file.status === "completed"
+                          ? styles.sourceFileSuccess
+                          : styles.sourceFilePending
+                    }`}
+                    key={file.id}
+                  >
+                    <span className={styles.sourceFileIcon}>
+                      {hasFileError(file) ? (
+                        <AlertTriangle size={14} />
+                      ) : file.status === "completed" ? (
+                        <Check size={14} />
+                      ) : (
+                        <FileSpreadsheet size={14} />
+                      )}
+                    </span>
+                    <div>
+                      <strong>{file.fileName}</strong>
+                      <small>{getFileStatusDetail(file, item.status)}</small>
+                    </div>
+                    <em>{getFileStatusLabel(file, item.status)}</em>
+                  </div>
                 ))}
               </div>
-            )}
-          </article>
-        ))}
+              {additionalErrors.length > 0 && (
+                <div className={styles.sourceErrors}>
+                  <strong>其他任务问题</strong>
+                  {additionalErrors.map((error, index) => (
+                    <span key={`${error.fileName}:${index}`} title={error.error}>
+                      <AlertTriangle size={13} />
+                      <em>{error.fileName}</em>
+                      <small>{error.error}</small>
+                    </span>
+                  ))}
+                </div>
+              )}
+            </article>
+          );
+        })}
         {!loading && !items.length && (
           <div className={styles.empty}>没有符合条件的导入来源记录</div>
         )}

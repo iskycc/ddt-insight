@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { recordApiCall } from "@/lib/api-stats";
 import { auditRequest } from "@/lib/audit";
 import { isCellValue } from "@/lib/case-data";
-import { errorResponse, requireApiSession } from "@/lib/http";
+import { errorResponse, requireEditorSession } from "@/lib/http";
 import { deleteCase, getCase, updateCaseColumn } from "@/lib/repository";
 
 export const dynamic = "force-dynamic";
@@ -49,10 +49,8 @@ export async function PATCH(
   request: NextRequest,
   context: { params: Promise<{ caseId: string }> },
 ) {
-  const session = await requireApiSession();
-  if (!session) {
-    return errorResponse("请先登录", 401);
-  }
+  const session = await requireEditorSession();
+  if (session instanceof NextResponse) return session;
 
   const { caseId } = await context.params;
   let body: {
@@ -97,10 +95,8 @@ export async function DELETE(
   request: NextRequest,
   context: { params: Promise<{ caseId: string }> },
 ) {
-  const session = await requireApiSession();
-  if (!session) {
-    return errorResponse("请先登录", 401);
-  }
+  const session = await requireEditorSession();
+  if (session instanceof NextResponse) return session;
 
   const { caseId } = await context.params;
 

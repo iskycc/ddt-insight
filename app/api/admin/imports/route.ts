@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { errorResponse, requireAuthenticatedSession } from "@/lib/http";
 import { kickImportWorker, listImportSources } from "@/lib/import-jobs";
+import { canEditCases } from "@/lib/permissions";
 
 export const dynamic = "force-dynamic";
 
@@ -8,7 +9,7 @@ export async function GET(request: NextRequest) {
   const session = await requireAuthenticatedSession();
   if (session instanceof NextResponse) return session;
 
-  kickImportWorker();
+  if (canEditCases(session.role)) kickImportWorker();
   const parameters = request.nextUrl.searchParams;
   const limit = Number(parameters.get("limit") ?? 30);
   const offset = Number(parameters.get("offset") ?? 0);

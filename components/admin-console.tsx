@@ -45,12 +45,14 @@ import { ldapGroupLabel } from "@/lib/ldap-group";
 
 type ToastHandler = (message: string) => void;
 const roleOptions = [
+  { value: "viewer", label: "查看者 — 只读访问所有功能" },
   { value: "editor", label: "编辑员 — 管理用例" },
   { value: "admin", label: "管理员 — 管理用例与系统" },
 ];
 const compactRoleOptions = [
   { value: "admin", label: "管理员" },
   { value: "editor", label: "编辑员" },
+  { value: "viewer", label: "查看者" },
 ];
 
 async function responseError(response: Response, fallback: string) {
@@ -75,9 +77,11 @@ function localDate(value: string | null) {
 
 export function UserManagement({
   currentUserId,
+  canManage,
   onToast,
 }: {
   currentUserId: string;
+  canManage: boolean;
   onToast: ToastHandler;
 }) {
   const router = useRouter();
@@ -113,6 +117,7 @@ export function UserManagement({
     user: UserRecord,
     changes: Partial<Pick<UserRecord, "displayName" | "role" | "enabled">>,
   ) {
+    if (!canManage) return;
     setBusyId(user.id);
     try {
       const response = await fetch(`/api/admin/users/${user.id}`, {
@@ -136,6 +141,7 @@ export function UserManagement({
   }
 
   async function remove(user: UserRecord) {
+    if (!canManage) return;
     setBusyId(user.id);
     setError("");
     try {
@@ -166,6 +172,8 @@ export function UserManagement({
         <button
           className="button button-primary"
           type="button"
+          disabled={!canManage}
+          title={canManage ? undefined : "仅管理员可以新建用户"}
           onClick={() => setCreateOpen(true)}
         >
           <Plus size={16} />
@@ -307,6 +315,7 @@ export function UserManagement({
                     value={user.role}
                     ariaLabel={`修改 ${user.username} 的角色`}
                     disabled={
+                      !canManage ||
                       busyId === user.id ||
                       user.id === currentUserId ||
                       user.isBootstrapAdmin
@@ -327,6 +336,7 @@ export function UserManagement({
                     role="switch"
                     aria-checked={user.enabled}
                     disabled={
+                      !canManage ||
                       busyId === user.id ||
                       user.id === currentUserId ||
                       user.isBootstrapAdmin
@@ -343,7 +353,7 @@ export function UserManagement({
                     type="button"
                     title="修改显示名称"
                     aria-label={`修改 ${user.username} 的显示名称`}
-                    disabled={busyId === user.id}
+                    disabled={!canManage || busyId === user.id}
                     onClick={() => setEditUser(user)}
                   >
                     <Pencil size={15} />
@@ -354,7 +364,7 @@ export function UserManagement({
                       type="button"
                       title="重置密码"
                       aria-label={`重置 ${user.username} 的密码`}
-                      disabled={busyId === user.id}
+                      disabled={!canManage || busyId === user.id}
                       onClick={() => setResetUser(user)}
                     >
                       <KeyRound size={15} />
@@ -370,6 +380,7 @@ export function UserManagement({
                     }
                     aria-label={`删除用户 ${user.username}`}
                     disabled={
+                      !canManage ||
                       busyId === user.id ||
                       user.id === currentUserId ||
                       user.isBootstrapAdmin
@@ -387,7 +398,7 @@ export function UserManagement({
         </div>
       </article>
 
-      {createOpen && (
+      {canManage && createOpen && (
         <UserDialog
           mode="create"
           onClose={() => setCreateOpen(false)}
@@ -399,7 +410,7 @@ export function UserManagement({
         />
       )}
 
-      {editUser && (
+      {canManage && editUser && (
         <UserDialog
           mode="edit"
           user={editUser}
@@ -415,7 +426,7 @@ export function UserManagement({
         />
       )}
 
-      {resetUser && (
+      {canManage && resetUser && (
         <UserDialog
           mode="reset"
           user={resetUser}
@@ -430,7 +441,7 @@ export function UserManagement({
         />
       )}
 
-      {deleteUser && (
+      {canManage && deleteUser && (
         <div
           className="modal-backdrop"
           onMouseDown={(event) => {
@@ -711,7 +722,13 @@ const emptyLdapConfig: LdapConfigPublic = {
   updatedBy: "",
 };
 
-export function LdapSettings({ onToast }: { onToast: ToastHandler }) {
+export function LdapSettings({
+  canManage,
+  onToast,
+}: {
+  canManage: boolean;
+  onToast: ToastHandler;
+}) {
   const [config, setConfig] = useState<LdapConfigPublic>(emptyLdapConfig);
   const [bindPassword, setBindPassword] = useState("");
   const [clearBindPassword, setClearBindPassword] = useState(false);
@@ -750,6 +767,7 @@ export function LdapSettings({ onToast }: { onToast: ToastHandler }) {
   }
 
   async function save(showToast = true) {
+    if (!canManage) return false;
     setSaving(true);
     setError("");
     try {
@@ -782,6 +800,7 @@ export function LdapSettings({ onToast }: { onToast: ToastHandler }) {
   }
 
   async function test() {
+    if (!canManage) return;
     if (!(await save(false))) return;
     setTesting(true);
     setError("");
@@ -840,6 +859,17 @@ export function LdapSettings({ onToast }: { onToast: ToastHandler }) {
           {loading && <LoaderCircle className="spin" size={18} />}
         </div>
 
+        {!canManage && (
+          <div className="admin-alert">
+            <ShieldCheck size={16} />
+            <span>当前账户以只读方式查看 LDAP 配置。</span>
+          </div>
+        )}
+
+        <fieldset
+          disabled={!canManage}
+          style={{ border: 0, margin: 0, minWidth: 0, padding: 0 }}
+        >
         <div className="ldap-enable-row">
           <span className="admin-summary-icon purple">
             <Network size={20} />
@@ -1091,6 +1121,7 @@ export function LdapSettings({ onToast }: { onToast: ToastHandler }) {
             </button>
           </div>
         </div>
+        </fieldset>
       </article>
     </div>
   );

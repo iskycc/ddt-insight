@@ -27,6 +27,7 @@ import type {
 } from "@/lib/types";
 import { displayInitial } from "@/lib/display-text";
 import { ldapGroupLabel } from "@/lib/ldap-group";
+import { userRoleLabel } from "@/lib/permissions";
 
 type ProfileResponse = UserRecord & {
   authenticated: true;
@@ -83,9 +84,11 @@ function localDate(value: string | null) {
 }
 
 export function ProfileSettings({
+  readOnly,
   onProfileUpdated,
   onToast,
 }: {
+  readOnly: boolean;
   onProfileUpdated: (profile: ProfileResponse) => void;
   onToast: (message: string) => void;
 }) {
@@ -132,7 +135,7 @@ export function ProfileSettings({
 
   async function save(event: FormEvent) {
     event.preventDefault();
-    if (!profile || profile.provider === "ldap") return;
+    if (readOnly || !profile || profile.provider === "ldap") return;
     setSaving(true);
     setError("");
     try {
@@ -274,7 +277,7 @@ export function ProfileSettings({
                     {profile.provider === "local" ? "本地账户" : "LDAP"}
                   </em>
                   <em className="profile-role-pill">
-                    {profile.role === "admin" ? "系统管理员" : "用例编辑员"}
+                    {userRoleLabel(profile.role)}
                   </em>
                   {profile.isBootstrapAdmin && (
                     <em className="profile-bootstrap-pill">默认管理员</em>
@@ -327,7 +330,9 @@ export function ProfileSettings({
             <div>
               <h2>基本信息</h2>
               <p>
-                {profile?.provider === "ldap"
+                {readOnly
+                  ? "查看者账户不能修改个人资料。"
+                  : profile?.provider === "ldap"
                   ? "名称和邮箱由 LDAP 目录同步。"
                   : "修改后会立即用于工作台和操作记录。"}
               </p>
@@ -340,7 +345,9 @@ export function ProfileSettings({
               <input
                 value={displayName}
                 maxLength={128}
-                disabled={loading || profile?.provider === "ldap"}
+                disabled={
+                  readOnly || loading || profile?.provider === "ldap"
+                }
                 onChange={(event) => setDisplayName(event.target.value)}
                 required
               />
@@ -351,7 +358,9 @@ export function ProfileSettings({
                 value={email}
                 type="email"
                 maxLength={320}
-                disabled={loading || profile?.provider === "ldap"}
+                disabled={
+                  readOnly || loading || profile?.provider === "ldap"
+                }
                 onChange={(event) => setEmail(event.target.value)}
                 placeholder="name@example.local"
               />
@@ -361,12 +370,18 @@ export function ProfileSettings({
                 LDAP 用户请在目录服务中修改个人资料，下次登录时平台会自动同步。
               </div>
             )}
+            {readOnly && profile?.provider !== "ldap" && (
+              <div className="profile-directory-note">
+                当前查看者角色为全局只读，管理员提升角色后才可修改资料。
+              </div>
+            )}
             <button
               className="button button-primary"
               type="submit"
               disabled={
                 loading ||
                 saving ||
+                readOnly ||
                 !profile ||
                 profile.provider === "ldap"
               }
