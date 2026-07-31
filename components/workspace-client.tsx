@@ -363,9 +363,22 @@ export function WorkspaceClient({
 
   const refreshAfterImport = useCallback(async () => {
     await Promise.all([loadGroups(), loadStats()]);
-    await loadCases(true);
+    const loadedCases = await loadCases(true);
+    const nextSelectedCaseId =
+      loadedCases.find((item) => item.caseId === selectedCaseId)?.caseId ??
+      loadedCases[0]?.caseId ??
+      "";
+    if (nextSelectedCaseId && nextSelectedCaseId === selectedCaseId) {
+      const response = await fetch(
+        `/api/case?caseId=${encodeURIComponent(nextSelectedCaseId)}`,
+        { cache: "no-store" },
+      );
+      if (response.ok) {
+        setSelectedCase((await response.json()) as CaseData);
+      }
+    }
     setHistoryRevision((current) => current + 1);
-  }, [loadCases, loadGroups, loadStats]);
+  }, [loadCases, loadGroups, loadStats, selectedCaseId]);
 
   async function logout() {
     await fetch("/api/auth/logout", { method: "POST" });
