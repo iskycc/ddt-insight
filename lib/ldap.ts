@@ -183,7 +183,7 @@ function validateConfig(input: {
       throw new Error(`${label}属性格式不正确`);
     }
   }
-  if (!["admin", "editor"].includes(input.defaultRole)) {
+  if (!["admin", "editor", "viewer"].includes(input.defaultRole)) {
     throw new Error("默认角色不正确");
   }
   if (

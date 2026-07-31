@@ -185,7 +185,7 @@ export function createLocalUser(input: {
   const displayName = input.displayName?.trim() || username;
   if (displayName.length > 128) throw new Error("显示名称不能超过 128 个字符");
   validatePassword(input.password);
-  if (!["admin", "editor"].includes(input.role)) {
+  if (!["admin", "editor", "viewer"].includes(input.role)) {
     throw new Error("用户角色不正确");
   }
 
@@ -303,7 +303,7 @@ export function updateUser(
   if (displayName.length > 128) throw new Error("显示名称不能超过 128 个字符");
   const role = input.role ?? current.role;
   const enabled = input.enabled ?? current.enabled;
-  if (!["admin", "editor"].includes(role)) throw new Error("用户角色不正确");
+  if (!["admin", "editor", "viewer"].includes(role)) throw new Error("用户角色不正确");
   if (current.isBootstrapAdmin && (role !== "admin" || !enabled)) {
     throw new Error("默认管理员必须保持管理员角色并处于启用状态");
   }

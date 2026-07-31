@@ -1,22 +1,20 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auditRequest } from "@/lib/audit";
-import { errorResponse, requireApiSession } from "@/lib/http";
+import { errorResponse, requireAdminSession, requireAuthenticatedSession } from "@/lib/http";
 import { getLdapConfig, saveLdapConfig } from "@/lib/ldap";
 import type { UserRole } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
-  const session = await requireApiSession();
-  if (!session) return errorResponse("请先登录", 401);
-  if (session.role !== "admin") return errorResponse("需要管理员权限", 403);
+  const session = await requireAuthenticatedSession();
+  if (session instanceof NextResponse) return session;
   return NextResponse.json(getLdapConfig());
 }
 
 export async function PUT(request: NextRequest) {
-  const session = await requireApiSession();
-  if (!session) return errorResponse("请先登录", 401);
-  if (session.role !== "admin") return errorResponse("需要管理员权限", 403);
+  const session = await requireAdminSession();
+  if (session instanceof NextResponse) return session;
 
   let body: {
     enabled?: boolean;

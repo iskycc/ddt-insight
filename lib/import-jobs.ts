@@ -468,8 +468,7 @@ function toJobView(job: StoredJob): ImportJobView {
     errors: parseErrors(job.errorsJson),
     canStart:
       job.status === "previewed" &&
-      job.failedFiles === 0 &&
-      files.some((file) => file.storedName),
+      files.some((file) => file.storedName && file.status !== "failed"),
     canCancel: ["previewed", "queued", "running"].includes(job.status),
     createdAt: job.createdAt,
     startedAt: job.startedAt,
@@ -958,9 +957,12 @@ async function processClaimedJob(jobId: string) {
     }
 
     const completed = getStoredJob(jobId)!;
+    const anySuccess =
+      completed.processedFiles > 0 &&
+      completed.processedFiles > completed.failedFiles;
     markJobTerminal(
       completed,
-      completed.failedFiles > 0 ? "failed" : "completed",
+      anySuccess ? "completed" : "failed",
     );
   } catch (error) {
     markJobTerminal(

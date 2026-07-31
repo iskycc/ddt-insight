@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auditRequest } from "@/lib/audit";
-import { errorResponse, requireApiSession } from "@/lib/http";
+import { errorResponse, requireAdminSession, requireAuthenticatedSession } from "@/lib/http";
 import {
   getSystemSettings,
   updateSystemSettings,
@@ -10,9 +10,8 @@ import {
 export const dynamic = "force-dynamic";
 
 export async function GET(request: NextRequest) {
-  const session = await requireApiSession();
-  if (!session) return errorResponse("请先登录", 401);
-  if (session.role !== "admin") return errorResponse("需要管理员权限", 403);
+  const session = await requireAuthenticatedSession();
+  if (session instanceof NextResponse) return session;
 
   try {
     const response = NextResponse.json(getSystemSettings());
@@ -27,9 +26,8 @@ export async function GET(request: NextRequest) {
 }
 
 export async function PUT(request: NextRequest) {
-  const session = await requireApiSession();
-  if (!session) return errorResponse("请先登录", 401);
-  if (session.role !== "admin") return errorResponse("需要管理员权限", 403);
+  const session = await requireAdminSession();
+  if (session instanceof NextResponse) return session;
 
   let body: Partial<SystemSettings>;
   try {

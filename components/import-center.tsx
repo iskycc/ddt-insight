@@ -509,6 +509,29 @@ export function ImportCenter({
                 </div>
               )}
 
+              {job.status === "previewed" && job.errors.length > 0 && (
+                <div className={styles.previewErrors}>
+                  <div className={styles.sectionHeading}>
+                    <strong>将跳过的问题文件</strong>
+                    <span>{job.errors.length} 项</span>
+                  </div>
+                  {job.errors.map((error, index) => (
+                    <div
+                      className={styles.previewError}
+                      key={`${error.fileName}:${index}`}
+                    >
+                      <span className={styles.fileErrorIcon}>
+                        <AlertTriangle size={16} />
+                      </span>
+                      <div>
+                        <strong>{error.fileName}</strong>
+                        <small>{error.error}</small>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
               <div className={styles.previewFiles}>
                 <div className={styles.sectionHeading}>
                   <strong>文件影响</strong>
@@ -548,6 +571,9 @@ export function ImportCenter({
                   <span>
                     实际新增 {job.result.inserted} 条，覆盖{" "}
                     {job.result.updated} 条，跳过 {job.result.skipped} 条
+                    {job.result.failedFiles > 0
+                      ? `，${job.result.failedFiles} 个文件失败`
+                      : ""}
                   </span>
                 </div>
               )}
@@ -788,6 +814,18 @@ export function ImportSourceTracker() {
                 </span>
               ))}
             </div>
+            {item.errors.length > 0 && (
+              <div className={styles.sourceErrors}>
+                <strong>失败文件</strong>
+                {item.errors.map((error, index) => (
+                  <span key={`${error.fileName}:${index}`} title={error.error}>
+                    <AlertTriangle size={13} />
+                    <em>{error.fileName}</em>
+                    <small>{error.error}</small>
+                  </span>
+                ))}
+              </div>
+            )}
           </article>
         ))}
         {!loading && !items.length && (

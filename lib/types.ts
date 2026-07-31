@@ -64,7 +64,7 @@ export interface DashboardStats {
   }>;
 }
 
-export type UserRole = "admin" | "editor";
+export type UserRole = "admin" | "editor" | "viewer";
 export type UserProvider = "local" | "ldap";
 
 export interface UserRecord {

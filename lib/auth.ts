@@ -71,7 +71,7 @@ export function verifySessionToken(token: string | undefined) {
       !payload.userId ||
       !payload.username ||
       !["local", "ldap"].includes(payload.provider) ||
-      !["admin", "editor"].includes(payload.role)
+      !["admin", "editor", "viewer"].includes(payload.role)
     ) {
       return null;
     }
