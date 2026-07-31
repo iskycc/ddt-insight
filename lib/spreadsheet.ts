@@ -79,11 +79,23 @@ function parseCaseSheet(
     );
   }
 
-  const normalizedColumnSet = new Set(
-    columns.map((column) => column.toLocaleLowerCase("en-US")),
-  );
-  if (normalizedColumnSet.size !== columns.length) {
-    throw new Error(`${sheetName} Sheet 中存在重复列名`);
+  const columnGroups = new Map<string, string[]>();
+  for (const column of columns) {
+    const normalized = column.toLocaleLowerCase("en-US");
+    columnGroups.set(normalized, [
+      ...(columnGroups.get(normalized) ?? []),
+      column,
+    ]);
+  }
+  const duplicateColumns = [...columnGroups.values()]
+    .filter((group) => group.length > 1)
+    .map((group) =>
+      [...new Set(group)].map((column) => `“${column}”`).join(" / "),
+    );
+  if (duplicateColumns.length) {
+    throw new Error(
+      `${sheetName} Sheet 中存在重复列名：${duplicateColumns.join("、")}`,
+    );
   }
 
   const caseIdIndex = columns.findIndex((column) => column === "CaseID");

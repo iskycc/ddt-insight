@@ -220,7 +220,7 @@ Windows 可以运行 `start.cmd`。启动脚本会先检查 Node.js 主版本，
 
 ```text
 iskycc/ddt-insight:latest
-iskycc/ddt-insight:1.0.8
+iskycc/ddt-insight:1.0.9
 ```
 
 使用 Docker Compose：
@@ -279,20 +279,20 @@ Docker 镜像基于 Node.js 24 Alpine，包含 Next.js 服务和全部运行依�
 工作流不会登录 Docker Hub，也不会执行 `docker push`。可以通过推送 `v*` 标签触发：
 
 ```bash
-git tag v1.0.8
-git push origin v1.0.8
+git tag v1.0.9
+git push origin v1.0.9
 ```
 
-也可以在 GitHub Actions 页面手动运行，并输入 `1.0.8` 或 `v1.0.8`。下载与目标机器 CPU 架构匹配的镜像包后，可在离线机器执行：
+也可以在 GitHub Actions 页面手动运行，并输入 `1.0.9` 或 `v1.0.9`。下载与目标机器 CPU 架构匹配的镜像包后，可在离线机器执行：
 
 ```bash
 # x86-64 机器
-sha256sum -c ddt-insight-1.0.8-linux-amd64.tar.gz.sha256
-gzip -dc ddt-insight-1.0.8-linux-amd64.tar.gz | docker load
+sha256sum -c ddt-insight-1.0.9-linux-amd64.tar.gz.sha256
+gzip -dc ddt-insight-1.0.9-linux-amd64.tar.gz | docker load
 
 # ARM64 / AArch64 机器
-sha256sum -c ddt-insight-1.0.8-linux-arm64.tar.gz.sha256
-gzip -dc ddt-insight-1.0.8-linux-arm64.tar.gz | docker load
+sha256sum -c ddt-insight-1.0.9-linux-arm64.tar.gz.sha256
+gzip -dc ddt-insight-1.0.9-linux-arm64.tar.gz | docker load
 ```
 
 两个离线包加载后都提供 `iskycc/ddt-insight:<版本>` 和 `iskycc/ddt-insight:latest` 标签。ARM 构建目标为当前服务器和开发板常用的 64 位 `arm64`，不包含 32 位 `arm/v7`。
