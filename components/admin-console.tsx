@@ -863,6 +863,10 @@ export function LdapSettings({ onToast }: { onToast: ToastHandler }) {
                 onChange={(event) => field("url", event.target.value)}
                 placeholder="ldaps://ldap.example.local:636"
               />
+              <small>
+                389 通常使用 ldap://；636 和 AD 全局编录 3269
+                会按 LDAPS 处理并自动规范地址。
+              </small>
             </label>
             <label>
               <span>连接超时（毫秒）</span>

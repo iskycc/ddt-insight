@@ -51,6 +51,8 @@ const defaultConfig = {
   updatedBy: "",
 } satisfies LdapConfigPublic;
 
+const implicitTlsPorts = new Set(["636", "3269"]);
+
 function getConfigRow() {
   return db
     .prepare(`
@@ -108,6 +110,18 @@ function validateLdapUrl(value: string) {
     parsed.hash
   ) {
     throw new Error("LDAP 服务地址只能包含协议、主机和端口");
+  }
+  return parsed;
+}
+
+function normalizeLdapUrl(value: string) {
+  if (!value) return value;
+  const parsed = validateLdapUrl(value);
+  if (
+    parsed.protocol === "ldap:" &&
+    implicitTlsPorts.has(parsed.port)
+  ) {
+    return value.replace(/^ldap:/i, "ldaps:");
   }
   return value;
 }
@@ -204,7 +218,7 @@ export function saveLdapConfig(
 ) {
   const normalized = {
     ...input,
-    url: input.url.trim(),
+    url: normalizeLdapUrl(input.url.trim()),
     bindDn: input.bindDn.trim(),
     userBaseDn: input.userBaseDn.trim(),
     userFilter: input.userFilter.trim(),
@@ -298,6 +312,14 @@ function privateConfig() {
   };
 }
 
+function usesImplicitTls(url: string) {
+  const parsed = new URL(url);
+  return (
+    parsed.protocol === "ldaps:" ||
+    (parsed.protocol === "ldap:" && implicitTlsPorts.has(parsed.port))
+  );
+}
+
 function createClient(config: {
   url: string;
   tlsRejectUnauthorized: boolean;
@@ -307,7 +329,7 @@ function createClient(config: {
     url: config.url,
     timeout: config.connectTimeoutMs,
     connectTimeout: config.connectTimeoutMs,
-    ...(config.url.toLocaleLowerCase("en-US").startsWith("ldaps://")
+    ...(usesImplicitTls(config.url)
       ? {
           tlsOptions: {
             minVersion: "TLSv1.2" as const,
@@ -316,6 +338,25 @@ function createClient(config: {
         }
       : {}),
   });
+}
+
+function ldapConnectionError(error: unknown, url: string) {
+  const message = error instanceof Error ? error.message : String(error);
+  const bindWasReset =
+    /0x60/i.test(message) &&
+    /(ECONNRESET|connection closed)/i.test(message);
+  if (bindWasReset) {
+    const parsed = new URL(url);
+    if (parsed.protocol === "ldap:" && !usesImplicitTls(url)) {
+      return new Error(
+        "LDAP 服务在 Bind 阶段重置了明文连接；目录若要求加密，请改用 ldaps:// 地址和 LDAPS 端口（通常为 636）",
+      );
+    }
+    return new Error(
+      "LDAP 服务在 Bind 阶段重置了连接；请检查服务地址、端口、Bind DN 及目录服务器的加密访问策略",
+    );
+  }
+  return error instanceof Error ? error : new Error(message);
 }
 
 async function unbindQuietly(client: Client) {
@@ -395,6 +436,8 @@ export async function testLdapConnection() {
       userBaseValidated: true,
       groupBaseValidated: Boolean(config.groupSearchBase),
     };
+  } catch (error) {
+    throw ldapConnectionError(error, config.url);
   } finally {
     await unbindQuietly(client);
   }
