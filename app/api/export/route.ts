@@ -7,7 +7,20 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
 function safeExportName(value: string) {
-  return value.replace(/[<>:"/\\|?*\u0000-\u001F]/g, "_").slice(0, 80);
+  return Array.from(
+    value
+      .toWellFormed()
+      .normalize("NFC")
+      .replace(/[<>:"/\\|?*\u0000-\u001F]/g, "_"),
+  )
+    .slice(0, 80)
+    .join("");
+}
+
+function encodeContentDispositionFileName(value: string) {
+  return encodeURIComponent(value).replace(/[!'()*]/g, (character) =>
+    `%${character.charCodeAt(0).toString(16).toUpperCase()}`,
+  );
 }
 
 export async function GET(request: NextRequest) {
@@ -22,10 +35,10 @@ export async function GET(request: NextRequest) {
 
   try {
     const buffer = buildExportWorkbook({ srNum, caseIds });
+    const exportDate = new Date().toISOString().slice(0, 10);
     const suffix = srNum ? `-${safeExportName(srNum)}` : "";
-    const fileName = `ddt-cases${suffix}-${new Date()
-      .toISOString()
-      .slice(0, 10)}.xlsx`;
+    const fileName = `ddt-cases${suffix}-${exportDate}.xlsx`;
+    const fallbackFileName = `ddt-cases-${exportDate}.xlsx`;
     auditRequest(request, session, {
       action: "case.export",
       resourceType: "export",
@@ -41,7 +54,7 @@ export async function GET(request: NextRequest) {
       headers: {
         "Content-Type":
           "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        "Content-Disposition": `attachment; filename="${fileName}"; filename*=UTF-8''${encodeURIComponent(fileName)}`,
+        "Content-Disposition": `attachment; filename="${fallbackFileName}"; filename*=UTF-8''${encodeContentDispositionFileName(fileName)}`,
         "Cache-Control": "no-store",
       },
     });

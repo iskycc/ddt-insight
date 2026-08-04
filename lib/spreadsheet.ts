@@ -23,6 +23,11 @@ const SUPPORTED_EXTENSIONS = new Set([
   "ods",
 ]);
 const EXPORTED_STEP_PRESENT_COLUMN = "__DDT_INSIGHT_STEP_PRESENT__";
+const utf8CsvDecoder = new TextDecoder("utf-8", { fatal: true });
+const utf16LeCsvDecoder = new TextDecoder("utf-16le", { fatal: true });
+const utf16BeCsvDecoder = new TextDecoder("utf-16be", { fatal: true });
+const gb18030CsvDecoder = new TextDecoder("gb18030", { fatal: true });
+const windows1252CsvDecoder = new TextDecoder("windows-1252");
 
 export interface ParsedSpreadsheet {
   fileName: string;
@@ -39,6 +44,58 @@ function extensionOf(fileName: string) {
 
 export function isSupportedSpreadsheetFile(fileName: string) {
   return SUPPORTED_EXTENSIONS.has(extensionOf(fileName));
+}
+
+function decodeCsvBuffer(buffer: Buffer) {
+  if (buffer[0] === 0xff && buffer[1] === 0xfe) {
+    return utf16LeCsvDecoder.decode(buffer);
+  }
+  if (buffer[0] === 0xfe && buffer[1] === 0xff) {
+    return utf16BeCsvDecoder.decode(buffer);
+  }
+  const sampleLength = Math.min(buffer.byteLength, 1024) & ~1;
+  if (sampleLength >= 8) {
+    let evenNulls = 0;
+    let oddNulls = 0;
+    for (let index = 0; index < sampleLength; index += 2) {
+      if (buffer[index] === 0) evenNulls += 1;
+      if (buffer[index + 1] === 0) oddNulls += 1;
+    }
+    const pairs = sampleLength / 2;
+    if (
+      oddNulls >= 4 &&
+      oddNulls / pairs >= 0.2 &&
+      oddNulls >= Math.max(1, evenNulls) * 4
+    ) {
+      return utf16LeCsvDecoder.decode(buffer);
+    }
+    if (
+      evenNulls >= 4 &&
+      evenNulls / pairs >= 0.2 &&
+      evenNulls >= Math.max(1, oddNulls) * 4
+    ) {
+      return utf16BeCsvDecoder.decode(buffer);
+    }
+  }
+  try {
+    return utf8CsvDecoder.decode(buffer);
+  } catch {
+    // Excel on Chinese Windows commonly writes CSV as GBK/CP936 without a
+    // BOM. Prefer it when decoding produces CJK text, then retain a Western
+    // single-byte fallback for legacy CSV files from other locales.
+  }
+  try {
+    const decoded = gb18030CsvDecoder.decode(buffer);
+    const cjkCharacters =
+      decoded.match(/\p{Script=Han}|[\u3000-\u30ff\uff00-\uffef]/gu)
+        ?.length ?? 0;
+    if (cjkCharacters >= 2) {
+      return decoded;
+    }
+  } catch {
+    // Fall through to the always-defined Windows-1252 decoder.
+  }
+  return windows1252CsvDecoder.decode(buffer);
 }
 
 function normalizeCell(value: unknown): CellValue {
@@ -170,14 +227,18 @@ export function parseSpreadsheet(
 
   let workbook: XLSX.WorkBook;
   try {
-    workbook = XLSX.read(buffer, {
-      type: "buffer",
-      cellDates: true,
-      dense: true,
-      // CSV buffers without a BOM are otherwise interpreted as a legacy
-      // single-byte encoding by SheetJS, which corrupts Chinese text.
-      codepage: extension === "csv" ? 65001 : undefined,
-    });
+    workbook =
+      extension === "csv"
+        ? XLSX.read(decodeCsvBuffer(buffer), {
+            type: "string",
+            cellDates: true,
+            dense: true,
+          })
+        : XLSX.read(buffer, {
+            type: "buffer",
+            cellDates: true,
+            dense: true,
+          });
   } catch {
     throw new Error("无法解析该表格，请确认文件未损坏且格式正确");
   }

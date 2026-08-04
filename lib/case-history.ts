@@ -89,6 +89,9 @@ export function appendCaseHistory(input: {
   createdAt?: string;
 }) {
   const changes = diffCaseData(input.before, input.after);
+  const sourceName = Array.from((input.sourceName ?? "").toWellFormed())
+    .slice(0, 512)
+    .join("");
 
   insertHistoryStatement.run(
     input.caseRecordId,
@@ -98,7 +101,7 @@ export function appendCaseHistory(input: {
     input.actor.username.slice(0, 128),
     input.actor.displayName.slice(0, 128),
     input.actor.provider,
-    (input.sourceName ?? "").slice(0, 512),
+    sourceName,
     JSON.stringify(input.before),
     JSON.stringify(input.after),
     JSON.stringify(changes),
