@@ -831,7 +831,13 @@ export function WorkspaceClient({
           <LdapSettings canManage={systemWriteAllowed} onToast={setToast} />
         )}
 
-        {view === "imports" && <ImportSourceTracker />}
+        {view === "imports" && (
+          <ImportSourceTracker
+            currentUserId={userId}
+            canExportAll={systemWriteAllowed}
+            canExportOwn={caseWriteAllowed}
+          />
+        )}
 
         {view === "settings" && (
           <MaintenanceCenter

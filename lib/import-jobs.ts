@@ -1,3 +1,4 @@
+import Database from "better-sqlite3";
 import { randomUUID } from "node:crypto";
 import {
   mkdir,
@@ -20,7 +21,7 @@ import {
   validateCaseAgainstTemplate,
   type CaseTemplate,
 } from "@/lib/case-management";
-import { dataDirectory, db } from "@/lib/db";
+import { dataDirectory, databasePath, db } from "@/lib/db";
 import {
   importParsedSpreadsheet,
   parseSpreadsheet,
@@ -58,11 +59,13 @@ export interface ImmediateImportFile {
   sizeBytes: number;
   totalRows: number;
   result?: ImportResult;
+  caseIds: string[];
   error?: string;
 }
 
 interface PreviewFile {
   id: string;
+  ordinal: number;
   fileName: string;
   storedName: string;
   sizeBytes: number;
@@ -78,7 +81,7 @@ interface PreviewFile {
   error: string;
 }
 
-type ImportFileView = Omit<PreviewFile, "storedName">;
+type ImportFileView = Omit<PreviewFile, "storedName" | "ordinal">;
 
 interface StoredJob {
   id: string;
@@ -137,6 +140,7 @@ export interface ImportJobView {
   };
   files: ImportFileView[];
   errors: ImportFileError[];
+  canExportCaseIds: boolean;
   canStart: boolean;
   canCancel: boolean;
   createdAt: string;
@@ -214,13 +218,41 @@ function ensureImportTables() {
       inserted_rows INTEGER NOT NULL DEFAULT 0,
       updated_rows INTEGER NOT NULL DEFAULT 0,
       skipped_rows INTEGER NOT NULL DEFAULT 0,
+      case_ids_recorded INTEGER NOT NULL DEFAULT 0
+        CHECK (case_ids_recorded IN (0, 1)),
       error TEXT NOT NULL DEFAULT '',
       FOREIGN KEY (job_id) REFERENCES import_jobs(id) ON DELETE CASCADE
     );
 
     CREATE INDEX IF NOT EXISTS idx_import_job_files_job
       ON import_job_files (job_id, ordinal);
+
+    CREATE TABLE IF NOT EXISTS import_job_case_ids (
+      job_id TEXT NOT NULL,
+      file_id TEXT NOT NULL,
+      file_ordinal INTEGER NOT NULL,
+      row_ordinal INTEGER NOT NULL,
+      case_id TEXT NOT NULL COLLATE NOCASE,
+      PRIMARY KEY (file_id, row_ordinal),
+      UNIQUE (job_id, case_id),
+      FOREIGN KEY (job_id) REFERENCES import_jobs(id) ON DELETE CASCADE,
+      FOREIGN KEY (file_id) REFERENCES import_job_files(id) ON DELETE CASCADE
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_import_job_case_ids_order
+      ON import_job_case_ids (job_id, file_ordinal, row_ordinal);
   `);
+
+  const fileColumns = db
+    .prepare("PRAGMA table_info(import_job_files)")
+    .all() as Array<{ name: string }>;
+  if (!fileColumns.some((column) => column.name === "case_ids_recorded")) {
+    db.exec(`
+      ALTER TABLE import_job_files
+      ADD COLUMN case_ids_recorded INTEGER NOT NULL DEFAULT 0
+        CHECK (case_ids_recorded IN (0, 1))
+    `);
+  }
 }
 
 function jobDirectory(jobId: string) {
@@ -411,7 +443,7 @@ function listJobFiles(jobId: string) {
   return db
     .prepare(`
       SELECT
-        id, file_name AS fileName, stored_name AS storedName,
+        id, ordinal, file_name AS fileName, stored_name AS storedName,
         size_bytes AS sizeBytes, status, total_rows AS totalRows,
         new_rows AS newRows, changed_rows AS changedRows,
         unchanged_rows AS unchangedRows, imported_rows AS importedRows,
@@ -424,9 +456,51 @@ function listJobFiles(jobId: string) {
     .all(jobId) as PreviewFile[];
 }
 
+function hasImportJobCaseIds(jobId: string) {
+  return Boolean(
+    db
+      .prepare(`
+        SELECT 1
+        FROM import_job_case_ids
+        WHERE job_id = ?
+          AND NOT EXISTS (
+            SELECT 1
+            FROM import_job_files files
+            WHERE files.job_id = ?
+              AND files.status = 'completed'
+              AND files.case_ids_recorded = 0
+          )
+        LIMIT 1
+      `)
+      .get(jobId, jobId),
+  );
+}
+
+function isTerminalImportStatus(status: ImportJobStatus) {
+  return ["completed", "failed", "cancelled"].includes(status);
+}
+
+function insertImportFileCaseIds(
+  jobId: string,
+  fileId: string,
+  fileOrdinal: number,
+  caseIds: string[],
+) {
+  const insert = db.prepare(`
+    INSERT OR IGNORE INTO import_job_case_ids (
+      job_id, file_id, file_ordinal, row_ordinal, case_id
+    ) VALUES (?, ?, ?, ?, ?)
+  `);
+  caseIds.forEach((caseId, rowOrdinal) => {
+    insert.run(jobId, fileId, fileOrdinal, rowOrdinal, caseId);
+  });
+}
+
 function toJobView(job: StoredJob): ImportJobView {
   const files = listJobFiles(job.id);
-  const publicFiles = files.map(({ storedName: _storedName, ...file }) => file);
+  const publicFiles = files.map(
+    ({ storedName: _storedName, ordinal: _ordinal, ...file }) => file,
+  );
   const newRows = files.reduce((total, file) => total + file.newRows, 0);
   const changedRows = files.reduce(
     (total, file) => total + file.changedRows,
@@ -474,6 +548,8 @@ function toJobView(job: StoredJob): ImportJobView {
     },
     files: publicFiles,
     errors: parseErrors(job.errorsJson),
+    canExportCaseIds:
+      isTerminalImportStatus(job.status) && hasImportJobCaseIds(job.id),
     canStart:
       job.status === "previewed" &&
       files.some((file) => file.storedName && file.status !== "failed"),
@@ -746,13 +822,14 @@ export function recordImmediateImportSource(input: {
       INSERT INTO import_job_files (
         id, job_id, ordinal, file_name, size_bytes, status, total_rows,
         new_rows, changed_rows, imported_rows, inserted_rows, updated_rows,
-        error
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        case_ids_recorded, error
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
     input.files.forEach((file, ordinal) => {
       const result = file.result;
+      const fileId = randomUUID();
       insertFile.run(
-        randomUUID(),
+        fileId,
         id,
         ordinal,
         file.fileName,
@@ -764,12 +841,92 @@ export function recordImmediateImportSource(input: {
         result?.imported ?? 0,
         result?.inserted ?? 0,
         result?.updated ?? 0,
+        result ? 1 : 0,
         result ? "" : file.error || "导入失败",
       );
+      if (result) {
+        insertImportFileCaseIds(id, fileId, ordinal, file.caseIds);
+      }
     });
   })();
 
   return toJobView(getStoredJob(id)!);
+}
+
+export interface ImportJobCaseIdExport {
+  id: string;
+  status: ImportJobStatus;
+  canExport: boolean;
+}
+
+const importJobCaseIdExportQuery = `
+  SELECT case_ids.case_id AS caseId
+  FROM import_job_case_ids case_ids
+  INNER JOIN import_job_files files
+    ON files.id = case_ids.file_id
+    AND files.job_id = case_ids.job_id
+  WHERE case_ids.job_id = ?
+    AND files.status = 'completed'
+  ORDER BY case_ids.file_ordinal, case_ids.row_ordinal
+`;
+
+function canAccessImportJob(
+  job: StoredJob,
+  session: Pick<AuthSession, "userId" | "role">,
+) {
+  return session.role === "admin" || job.actorUserId === session.userId;
+}
+
+export function getImportJobCaseIdExport(
+  jobId: string,
+  session: Pick<AuthSession, "userId" | "role">,
+): ImportJobCaseIdExport | null {
+  const job = getStoredJob(jobId);
+  if (!job || !canAccessImportJob(job, session)) return null;
+  return {
+    id: job.id,
+    status: job.status,
+    canExport:
+      isTerminalImportStatus(job.status) && hasImportJobCaseIds(job.id),
+  };
+}
+
+export function* streamImportJobCaseIds(
+  jobId: string,
+): Generator<Uint8Array, void, unknown> {
+  const exportDatabase = new Database(databasePath, {
+    readonly: true,
+    fileMustExist: true,
+  });
+  exportDatabase.pragma("busy_timeout = 5000");
+  exportDatabase.pragma("query_only = ON");
+
+  try {
+    const rows = exportDatabase
+      .prepare(importJobCaseIdExportQuery)
+      .iterate(jobId) as IterableIterator<{ caseId: string }>;
+    const lines: string[] = [];
+    let chunkBytes = 0;
+    const maximumChunkBytes = 64 * 1024;
+
+    for (const row of rows) {
+      const line = `${row.caseId}\n`;
+      const lineBytes = Buffer.byteLength(line, "utf8");
+      if (lines.length && chunkBytes + lineBytes > maximumChunkBytes) {
+        yield Buffer.from(lines.join(""), "utf8");
+        lines.length = 0;
+        chunkBytes = 0;
+      }
+      lines.push(line);
+      chunkBytes += lineBytes;
+    }
+
+    if (lines.length) {
+      yield Buffer.from(lines.join(""), "utf8");
+    }
+  } finally {
+    exportDatabase.close();
+  }
 }
 
 export function getImportJob(
@@ -777,8 +934,7 @@ export function getImportJob(
   session: Pick<AuthSession, "userId" | "role">,
 ) {
   const job = getStoredJob(jobId);
-  if (!job) return null;
-  if (session.role !== "admin" && job.actorUserId !== session.userId) return null;
+  if (!job || !canAccessImportJob(job, session)) return null;
   return toJobView(job);
 }
 
@@ -1078,11 +1234,20 @@ async function processClaimedJob(jobId: string) {
         }
 
         db.transaction(() => {
+          insertImportFileCaseIds(
+            jobId,
+            file.id,
+            file.ordinal,
+            parsed.rows.map((row) =>
+              String(getCaseCell(row, "CaseID") ?? ""),
+            ),
+          );
           db.prepare(`
             UPDATE import_job_files
             SET status = 'completed', imported_rows = ?,
                 inserted_rows = ?, updated_rows = ?, skipped_rows = ?,
-                new_rows = ?, changed_rows = ?, unchanged_rows = ?
+                new_rows = ?, changed_rows = ?, unchanged_rows = ?,
+                case_ids_recorded = 1
             WHERE id = ?
           `).run(
             result?.imported ?? 0,

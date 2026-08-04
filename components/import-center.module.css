@@ -163,6 +163,7 @@
   border-radius: 10px;
   font-size: 0.6875rem;
   font-weight: 680;
+  text-decoration: none;
   transition:
     transform 160ms ease,
     border-color 160ms ease,
@@ -854,6 +855,44 @@
   background: #ffebec;
 }
 
+.sourceDownload {
+  display: inline-flex;
+  min-height: 28px;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 7px;
+  color: #176da9;
+  border: 1px solid #cfe3f3;
+  border-radius: 7px;
+  background: #eef8ff;
+  font-size: 0.4375rem;
+  font-weight: 640;
+  line-height: 1;
+  text-decoration: none;
+  transition:
+    color 160ms ease,
+    border-color 160ms ease,
+    background 160ms ease,
+    transform 160ms ease;
+}
+
+.sourceDownload:hover {
+  color: #075f9d;
+  border-color: #add2ed;
+  background: #e4f4ff;
+  transform: translateY(-1px);
+}
+
+.sourceDownload:active {
+  transform: translateY(0) scale(0.98);
+}
+
+.sourceDownload:focus-visible {
+  outline: 0;
+  border-color: #82bce3;
+  box-shadow: 0 0 0 3px rgba(26, 129, 225, 0.12);
+}
+
 .sourceFiles {
   display: grid;
   gap: 7px;
@@ -1021,6 +1060,10 @@
     max-height: 92vh;
     border-radius: 21px 21px 0 0;
     animation-name: import-sheet-in;
+  }
+
+  .actions {
+    flex-wrap: wrap;
   }
 
   .metrics {

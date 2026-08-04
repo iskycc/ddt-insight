@@ -4,6 +4,7 @@ import {
   AlertTriangle,
   Check,
   CircleStop,
+  Download,
   FileArchive,
   FileSpreadsheet,
   History,
@@ -82,6 +83,7 @@ export interface ImportJobSnapshot {
   };
   files: ImportFileSnapshot[];
   errors: Array<{ fileName: string; error: string }>;
+  canExportCaseIds: boolean;
   canStart: boolean;
   canCancel: boolean;
   createdAt: string;
@@ -661,6 +663,16 @@ export function ImportCenter({
             </button>
           )}
           <span />
+          {job?.canExportCaseIds && (
+            <a
+              className={styles.secondaryButton}
+              href={`/api/import/jobs/${encodeURIComponent(job.id)}/case-ids`}
+              download
+            >
+              <Download aria-hidden="true" focusable="false" size={16} />
+              导出全部 CaseID
+            </a>
+          )}
           <button
             className={styles.secondaryButton}
             type="button"
@@ -720,7 +732,15 @@ interface SourceResponse {
   offset: number;
 }
 
-export function ImportSourceTracker() {
+export function ImportSourceTracker({
+  currentUserId,
+  canExportAll,
+  canExportOwn,
+}: {
+  currentUserId: string;
+  canExportAll: boolean;
+  canExportOwn: boolean;
+}) {
   const [items, setItems] = useState<ImportJobSnapshot[]>([]);
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState("");
@@ -851,6 +871,10 @@ export function ImportSourceTracker() {
           );
           const isPartial =
             item.status === "completed" && item.result.failedFiles > 0;
+          const canExportItemCaseIds =
+            item.canExportCaseIds &&
+            (canExportAll ||
+              (canExportOwn && item.actor.userId === currentUserId));
 
           return (
             <article className={styles.sourceCard} key={item.id}>
@@ -885,6 +909,16 @@ export function ImportSourceTracker() {
                   <span className={styles.failedStat}>
                     未导入 {item.result.failedFiles}
                   </span>
+                )}
+                {canExportItemCaseIds && (
+                  <a
+                    className={styles.sourceDownload}
+                    href={`/api/import/jobs/${encodeURIComponent(item.id)}/case-ids`}
+                    download
+                  >
+                    <Download aria-hidden="true" focusable="false" size={12} />
+                    导出 CaseID
+                  </a>
                 )}
               </div>
               <div className={styles.sourceFiles}>

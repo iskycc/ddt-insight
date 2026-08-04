@@ -123,6 +123,11 @@ function parseCaseSheet(
     if (!caseId) {
       throw new Error(`${sheetName} Sheet 第 ${sheetRow} 行的 CaseID 为空`);
     }
+    if (/[\r\n\u0085\u2028\u2029]/u.test(caseId)) {
+      throw new Error(
+        `${sheetName} Sheet 第 ${sheetRow} 行的 CaseID 不能包含换行符`,
+      );
+    }
     if (!srNum) {
       throw new Error(`${sheetName} Sheet 第 ${sheetRow} 行的 srNum 为空`);
     }

@@ -56,7 +56,13 @@ export async function POST(request: NextRequest) {
 
   const recordError = (fileName: string, error: string, sizeBytes = 0) => {
     errors.push({ fileName, error });
-    sourceFiles.push({ fileName, error, sizeBytes, totalRows: 0 });
+    sourceFiles.push({
+      fileName,
+      error,
+      sizeBytes,
+      totalRows: 0,
+      caseIds: [],
+    });
   };
 
   if (files.length > maxImportFiles) {
@@ -109,16 +115,15 @@ export async function POST(request: NextRequest) {
     try {
       const parsed = parseSpreadsheet(spreadsheet.buffer, spreadsheet.fileName);
       totalRows = parsed.rows.length;
-      const result = importParsedSpreadsheet(
-        validateImportSpreadsheet(parsed),
-        session,
-      );
+      const validated = validateImportSpreadsheet(parsed);
+      const result = importParsedSpreadsheet(validated, session);
       results.push(result);
       sourceFiles.push({
         fileName: spreadsheet.fileName,
         sizeBytes: spreadsheet.buffer.byteLength,
         totalRows,
         result,
+        caseIds: validated.rows.map((row) => String(row.CaseID ?? "")),
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : "导入失败";
@@ -127,6 +132,7 @@ export async function POST(request: NextRequest) {
         fileName: spreadsheet.fileName,
         sizeBytes: spreadsheet.buffer.byteLength,
         totalRows,
+        caseIds: [],
         error: message,
       });
     }

@@ -80,6 +80,7 @@ DDT Insight 是完全离线运行的 Next.js 全栈用例数据管理平台：
 - `POST /api/import/preview`
 - `POST /api/import/jobs`
 - `GET /api/import/jobs/[id]`
+- `GET /api/import/jobs/[id]/case-ids`
 - `POST /api/import/jobs/[id]/cancel`
 - `GET /api/groups`
 - `POST /api/import`
